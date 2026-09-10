@@ -64,6 +64,40 @@ public class ValheimRandomizer : BaseUnityPlugin
 
     public static BepInEx.Logging.ManualLogSource Log { get; private set; }
 
+    /// <summary>
+    /// Folder where the mod DLL lives. More reliable than a hardcoded
+    /// "ValheimRandomizer" subfolder: r2modman/Thunderstore install each mod
+    /// into its own folder, so Paths.PluginPath + "ValheimRandomizer" may not exist.
+    /// </summary>
+    internal static string PluginFolder
+    {
+        get
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(typeof(ValheimRandomizer).Assembly.Location);
+                if (!string.IsNullOrEmpty(dir)) return dir;
+            }
+            catch { /* fall through to legacy path */ }
+            return Path.Combine(Paths.PluginPath, "ValheimRandomizer");
+        }
+    }
+
+    /// <summary>
+    /// Resolve a data file (research.tsv / trophies.tsv).
+    /// Search order: 1) next to the DLL, 2) legacy BepInEx/plugins/ValheimRandomizer/.
+    /// Returns the first existing path, or the next-to-DLL path if neither exists.
+    /// </summary>
+    static string ResolveDataFile(string fileName)
+    {
+        var nextToDll = Path.Combine(PluginFolder, fileName);
+        if (File.Exists(nextToDll)) return nextToDll;
+        var legacy = Path.Combine(Paths.PluginPath, "ValheimRandomizer", fileName);
+        if (File.Exists(legacy)) return legacy;
+        Logger.LogWarning($"Data file '{fileName}' not found. Searched:{System.Environment.NewLine}  {nextToDll}{System.Environment.NewLine}  {legacy}");
+        return nextToDll;
+    }
+
     float time = 0f;
 
     private void Awake()
@@ -226,11 +260,13 @@ public class ValheimRandomizer : BaseUnityPlugin
 
         try
         {
-            string file = Path.Combine(Paths.PluginPath, "ValheimRandomizer/research.tsv");
+            string file = ResolveDataFile("research.tsv");
 
             // Seed a tiny example if missing
             if (!File.Exists(file))
             {
+                var seedDir = Path.GetDirectoryName(file);
+                if (!string.IsNullOrEmpty(seedDir)) Directory.CreateDirectory(seedDir);
                 var seed = string.Join("\n", new[]
                 {
                 "# iconFromItemPrefab\tresearchItemID\tdisplayName\tdescription\trequiredResearchIDs\tresearchRecipeRequirements\tgatedItemPrefabIDs",
@@ -320,9 +356,10 @@ public class ValheimRandomizer : BaseUnityPlugin
     {
         try
         {
-            string pluginFolder = Paths.PluginPath;
-            string recipesFile = System.IO.Path.Combine(pluginFolder, "ValheimRandomizer/RecipesWithoutResearch.txt");
-            string piecesFile = System.IO.Path.Combine(pluginFolder, "ValheimRandomizer/PiecesWithoutResearch.txt");
+            string outDir = PluginFolder;
+            System.IO.Directory.CreateDirectory(outDir);
+            string recipesFile = System.IO.Path.Combine(outDir, "RecipesWithoutResearch.txt");
+            string piecesFile = System.IO.Path.Combine(outDir, "PiecesWithoutResearch.txt");
 
             var recipesWithoutResearch = new List<string>();
             var piecesWithoutResearch = new List<string>();
@@ -386,7 +423,7 @@ public class ValheimRandomizer : BaseUnityPlugin
     {
         try
         {
-            string file = System.IO.Path.Combine(Paths.PluginPath, "ValheimRandomizer/trophies.tsv");
+            string file = ResolveDataFile("trophies.tsv");
             if (!System.IO.File.Exists(file))
             {
                 Logger.LogWarning($"Trophy research file not found at {file}. Skipping trophy researches.");
@@ -432,6 +469,15 @@ public class ValheimRandomizer : BaseUnityPlugin
         catch (Exception ex)
         {
             Logger.LogError($"AddTrophyResearches (from TSV) failed: {ex}");
+        }
+    }
+
+    static bool TryParseBoost(string s, out TrophyResearch.TrophyBoost boost)
+    {
+        return Enum.TryParse(s, out boost);
+    }
+}
+ Logger.LogError($"AddTrophyResearches (from TSV) failed: {ex}");
         }
     }
 

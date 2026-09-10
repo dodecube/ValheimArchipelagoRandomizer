@@ -3,6 +3,8 @@ Valheim Archipelago Randomizer requires BepInEx and Jotunn in order to work prop
 
 Once both BepInEx and Jotunn have been installed, unzip the ValheimRandomizer zip file into your Valheim install directory. When you are finished, the files for the mod should be present in the Valheim/BepInEx/plugins/ValheimRandomizer directory.
 
+If you use r2modman/Thunderstore: the mod looks for research.tsv and trophies.tsv first next to ValheimRandomizer.dll, then in BepInEx/plugins/ValheimRandomizer/. If the Research Bench is empty and the log shows DirectoryNotFoundException for research.tsv, open the profile folder (Settings -> Browse profile folder), go to BepInEx/plugins/, and make sure research.tsv and trophies.tsv sit either next to the DLL or in BepInEx/plugins/ValheimRandomizer/. You can copy them from the release zip (BepInEx/plugins/ValheimRandomizer/ inside the archive).
+
 Once the game is open a popup window will let you connect to Archipelago.
 Make sure that the 'Randomized' checkbox is checked before connecting to the AP server.
 
@@ -24,6 +26,15 @@ The first time each trophy type is gained, it also results in an AP check being 
 
 
 
+
+GIFTS & PRANKS (0.2.6+)
+The yaml options "gifts" (0-6) and "pranks" (0-3) add AP items to the Valheim pool.
+When the Valheim player receives a gift, resources spawn next to them (Wood/Stone/Coal/Honey/Coins/CookedMeat).
+When they receive a prank (Trap), hostile mobs spawn next to them (Greydwarfs/Wolves/Troll/Deathsquitos).
+In a multiworld these items can be placed at any player's locations, so other players send gifts to Valheim by doing their own checks.
+To make room for them, 9 exploration checks were added: first visit to Meadows, Black Forest, Ocean, Swamp, Mountain, Plains, Mistlands, Ashlands, Deep North.
+Gifts are tracked by server index in received_<slot>.txt next to the DLL so they are never duplicated on relog. If you reuse a slot name for a new seed, delete that file or run the console command apgift_reset.
+Note: spawning happens on the Valheim client, so co-op hosting (host = a player's game) is recommended over a dedicated server.
 
 FILES USED
 research.tsv

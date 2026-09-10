@@ -34,6 +34,29 @@ class Goal(Choice):
     option_Queen = 5
     option_Fader = 6
 
+class Gifts(Range):
+    """Number of gift items (useful resource bundles) added to the Valheim item pool.
+    When the Valheim player receives one, the mod spawns the resources next to them.
+    In a multiworld these can be found at any player's checks, so friends can
+    effectively send gifts to the Valheim player by doing their own checks."""
+    display_name = "Gift Items"
+    range_start = 0
+    range_end = 6
+    default = 4
+
+
+class Pranks(Range):
+    """Number of prank items (hostile mob ambushes) added to the Valheim item pool.
+    When the Valheim player receives one, the mod spawns hostile mobs next to them.
+    Classification: Trap."""
+    display_name = "Prank Items"
+    range_start = 0
+    range_end = 3
+    default = 2
+
+
 @dataclass
 class ValheimOptions(PerGameCommonOptions):
     goal: Goal
+    gifts: Gifts
+    pranks: Pranks

@@ -201,6 +201,19 @@ public static class RandomizerUtils
         ValheimRandomizer.archipelagoToResearch.Add("Trophy: " + itemID, researchID);
     }
 
+    /// <summary>
+    /// Register a non-craftable event location (e.g. "Entered: Meadows").
+    /// Only creates the AP name mapping; the check is sent via UnlockResearch(eventID).
+    /// </summary>
+    public static void CreateEventLocation(string eventID, string apLocationName)
+    {
+        if (ValheimRandomizer.researchToArchipelago.ContainsKey(eventID)) return;
+        ValheimRandomizer.researchToArchipelago.Add(eventID, apLocationName);
+        if (!ValheimRandomizer.archipelagoToResearch.ContainsKey(apLocationName))
+            ValheimRandomizer.archipelagoToResearch.Add(apLocationName, eventID);
+        ValheimRandomizer.Log?.LogInfo($"Registered event location: {eventID} -> {apLocationName}.");
+    }
+
     public static bool CanResearchBeCrafted(string itemID)
     {
         if (ValheimRandomizer.research.Contains(itemID))

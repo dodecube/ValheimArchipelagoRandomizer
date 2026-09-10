@@ -301,6 +301,15 @@ Trophy,Trophy: TrophyCharredMelee,loc:researchTrophyCharredWarrior,Not Missable,
 Trophy,Trophy: TrophyFader,loc:researchTrophyFader,Not Missable,Tier11
 Trophy,Trophy: TrophyAsksvin,loc:researchTrophyAsksvin,Not Missable,Tier11
 Trophy,Trophy: TrophyVolture,loc:researchTrophyVolture,Not Missable,Tier11
+Explore,Entered: Meadows,loc:eventBiomeMeadows,Not Missable,Tier0
+Explore,Entered: Black Forest,loc:eventBiomeBlackForest,Not Missable,Tier1
+Explore,Entered: Ocean,loc:eventBiomeOcean,Not Missable,Tier2
+Explore,Entered: Swamp,loc:eventBiomeSwamp,Not Missable,Tier4
+Explore,Entered: Mountain,loc:eventBiomeMountain,Not Missable,Tier6
+Explore,Entered: Plains,loc:eventBiomePlains,Not Missable,Tier8
+Explore,Entered: Mistlands,loc:eventBiomeMistlands,Not Missable,Tier9
+Explore,Entered: Ashlands,loc:eventBiomeAshlands,Not Missable,Tier11
+Explore,Entered: Deep North,loc:eventBiomeDeepNorth,Not Missable,Tier11
 '''
 
 # Map string classifications to `LocationProgressType`

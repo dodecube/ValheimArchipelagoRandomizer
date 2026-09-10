@@ -94,11 +94,15 @@ internal static class ArchipelagoConnection
     {
         if (!WorldLoaded()) return;
 
+        // Gifts/pranks are non-idempotent: process strictly once each via persistent server index.
+        GiftSpawning.ProcessIncoming(session.Items.AllItemsReceived.ToList(), ValheimRandomizer.archipelagoSlot.Value);
+
         foreach (var item in session.Items.AllItemsReceived)
         {
             var name = item.ItemName;
             if (string.IsNullOrEmpty(name)) continue;
 
+            if (GiftSpawning.IsGift(name)) continue; // already handled above
             if (gottenItems.Contains(name)) continue;
             gottenItems.Add(name);
 

@@ -331,12 +331,55 @@ for line in items_txt.strip().splitlines():
     current_id += 1
 
 
+# ===== Gifts & pranks =====
+# These items belong to the Valheim player. When received, the mod (see
+# src/GiftSpawning.cs) spawns resources (gifts) or hostile mobs (pranks)
+# next to the player instead of unlocking a research.
+# IMPORTANT: names here must match GiftSpawning.cs exactly.
+# IDs live in their own range (3000+) so research item IDs stay stable.
+_gift_defs = [
+    # (friendly name, game_id, classification)
+    ("Gift: Wood Bundle", "item:giftWood", ItemClassification.filler),
+    ("Gift: Stone Cache", "item:giftStone", ItemClassification.filler),
+    ("Gift: Coal Stash", "item:giftCoal", ItemClassification.filler),
+    ("Gift: Honey Pot", "item:giftHoney", ItemClassification.filler),
+    ("Gift: Coin Purse", "item:giftCoins", ItemClassification.filler),
+    ("Gift: Cooked Feast", "item:giftFeast", ItemClassification.filler),
+    ("Prank: Greydwarf Ambush", "item:prankGreydwarfs", ItemClassification.trap),
+    ("Prank: Hungry Wolves", "item:prankWolves", ItemClassification.trap),
+    ("Prank: Angry Troll", "item:prankTroll", ItemClassification.trap),
+    ("Prank: Deathsquito Swarm", "item:prankSkeetos", ItemClassification.trap),
+]
+
+gift_data_table: List[ValheimItem] = []
+_gift_id = 3000
+for _name, _game_id, _cls in _gift_defs:
+    gift_data_table.append(ValheimItem(
+        id=_gift_id,
+        item_name=_name,
+        game_id=_game_id,
+        count=1,
+        item_type="Gift",
+        classification=_cls,
+    ))
+    _gift_id += 1
+
+gift_names: List[str] = [g.item_name for g in gift_data_table
+                         if g.classification == ItemClassification.filler]
+prank_names: List[str] = [g.item_name for g in gift_data_table
+                          if g.classification == ItemClassification.trap]
+_gift_by_name: Dict[str, ValheimItem] = {g.item_name: g for g in gift_data_table}
+
+
 def create_item(self, name: str, player: int) -> Item:
     for item in item_data_table:
         for _ in range(item.count):  # Create as many instances as specified by `count`
             # Create the item using Archipelago's Item class
             if name == item.item_name:
                 return Item(item.item_name, item.classification, item.id, player)
+    if name in _gift_by_name:
+        gift = _gift_by_name[name]
+        return Item(gift.item_name, gift.classification, gift.id, player)
 
 
 
@@ -349,6 +392,21 @@ def create_items(world: "ValheimWorld"):
             # Create the item using Archipelago's Item class
             game_item = Item(item.item_name, item.classification, item.id, world.player)
             world.multiworld.itempool.append(game_item)
-            
-            
+
+    # Gifts & pranks: random types, counts from yaml options.
+    # Max total (6 + 3 = 9) matches the 9 exploration locations, so the pool
+    # stays balanced (items <= locations) even in solo Valheim generation.
+    for _ in range(world.options.gifts.value):
+        name = world.random.choice(gift_names)
+        gift = _gift_by_name[name]
+        world.multiworld.itempool.append(
+            Item(gift.item_name, gift.classification, gift.id, world.player))
+    for _ in range(world.options.pranks.value):
+        name = world.random.choice(prank_names)
+        gift = _gift_by_name[name]
+        world.multiworld.itempool.append(
+            Item(gift.item_name, gift.classification, gift.id, world.player))
+
+
 item_table: Dict[str, int] = {item.item_name: item.id for item in item_data_table}
+item_table.update({gift.item_name: gift.id for gift in gift_data_table})
