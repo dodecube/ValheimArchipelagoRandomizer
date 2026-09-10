@@ -39,6 +39,17 @@ internal static class ArchipelagoConnection
            {
              ValheimRandomizer.Goal = Convert.ToString(goal_string);
            }
+           ValheimRandomizer.ActiveBiomes.Clear();
+           if (loginSuccess.SlotData.TryGetValue("biomes", out var biomesObj)
+               && biomesObj is System.Collections.IEnumerable biomes)
+           {
+               foreach (var b in biomes)
+               {
+                   var id = Convert.ToString(b);
+                   if (!string.IsNullOrEmpty(id)) ValheimRandomizer.ActiveBiomes.Add(id);
+               }
+               ValheimRandomizer.Log?.LogInfo($"Active biome checks: {ValheimRandomizer.ActiveBiomes.Count}");
+           }
         }
 
         // Hook item reception
@@ -75,6 +86,8 @@ internal static class ArchipelagoConnection
 
             var name = item.ItemName;
             if (string.IsNullOrEmpty(name)) continue;
+
+            if (GiftSpawning.IsGift(name)) continue; // gifts are handled by the index-based poller below
 
             if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
             {
@@ -129,8 +142,23 @@ internal static class ArchipelagoConnection
             if (!key.StartsWith("ap_pending:", StringComparison.Ordinal)) continue;
 
             var researchId = key.Substring("ap_pending:".Length);
-            var locationName = ValheimRandomizer.researchToArchipelago[researchId];
-            if (string.IsNullOrWhiteSpace(locationName)) continue;
+            string locationName;
+            try
+            {
+                locationName = ValheimRandomizer.researchToArchipelago[researchId];
+            }
+            catch
+            {
+                // No mapping: drop the pending key instead of throwing in Update() every tick.
+                ValheimRandomizer.Log?.LogWarning($"No AP mapping for '{researchId}', dropping check.");
+                RemoveGlobal(key);
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(locationName))
+            {
+                RemoveGlobal(key);
+                continue;
+            }
 
             if (HasGlobal($"ap_sent:{researchId}")) continue;
 

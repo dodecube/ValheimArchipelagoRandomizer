@@ -1,0 +1,8 @@
+name: Solo
+game: Valheim
+requires:
+  version: 0.6.7
+Valheim:
+  goal: Fader
+  gifts: 0
+  pranks: 0

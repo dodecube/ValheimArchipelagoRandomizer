@@ -35,6 +35,10 @@ Valheim:
   # Wood Bundle (дерево x50), Stone Cache, Coal Stash, Honey Pot, Coin Purse, Cooked Feast.
   # В мультиигре подарки могут лежать на чеках ЛЮБОГО игрока — делая свои чеки
   # в своей игре, ты отправляешь подарки другу в Valheim.
+  # Нюанс баланса: подарки+пранки всегда равны числу биом-чеков (первый визит
+  # в биом: Meadows, Black Forest, Ocean, Swamp, Mountain, Plains, Mistlands,
+  # Ashlands, Deep North). То есть gifts+pranks = сколько биомов будут чеками.
+  # gifts: 0 + pranks: 0 = без подарков и без биом-чеков (как раньше).
   gifts: 4
 
   # Сколько предметов-проказ добавить в пул (0-3, классификация Trap). Пранк =

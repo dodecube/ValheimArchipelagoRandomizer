@@ -18,7 +18,7 @@ public class ValheimRandomizer : BaseUnityPlugin
 {
     public const string ModGuid = "com.samupo.randomizer";
     public const string ModName = "Randomizer";
-    public const string ModVersion = "0.2.5";
+    public const string ModVersion = "0.2.6";
 
     public static string Goal;
 
@@ -61,6 +61,10 @@ public class ValheimRandomizer : BaseUnityPlugin
     public static Dictionary<string, TrophyResearch> trophyByItemID = new Dictionary<string, TrophyResearch>();
     public static Dictionary<string, string> researchToArchipelago = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     public static Dictionary<string, string> archipelagoToResearch = new Dictionary<string, string>();
+
+    /// <summary>Biome event IDs that exist in the current seed (from slot_data["biomes"]).
+    /// Empty by default so old seeds without biome checks never send bogus locations.</summary>
+    public static HashSet<string> ActiveBiomes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public static BepInEx.Logging.ManualLogSource Log { get; private set; }
 
@@ -112,6 +116,8 @@ public class ValheimRandomizer : BaseUnityPlugin
 
         ValheimRandomizer.Log = this.Logger;
         PrefabManager.OnVanillaPrefabsAvailable += DoOnPrefabsAvailable;
+        new Terminal.ConsoleCommand("apgift_reset", "Reset AP gift/prank received counter (for reused slot names)",
+            args => { GiftSpawning.ResetIndex(archipelagoSlot.Value); Log?.LogInfo("AP gift index reset."); });
         new Harmony(ValheimRandomizer.ModGuid).PatchAll();
 
         var go = new GameObject("ValheimRandomizer.AP_UI");
@@ -122,9 +128,54 @@ public class ValheimRandomizer : BaseUnityPlugin
     void DoOnPrefabsAvailable()
     {
         RandomizerUtils.RegisterResearchBench();
+        AddEventLocations();
         Invoke(nameof(AddResearchRecipes), 5.0f);
         Invoke(nameof(AddTrophyResearches), 5.5f);
         Invoke(nameof(CheckRecipesAndPiecesWithoutResearch), 10.0f);
+    }
+
+    /// <summary>
+    /// Non-craftable event checks (first biome visits). Names must match Locations.py.
+    /// </summary>
+    private void AddEventLocations()
+    {
+        RandomizerUtils.CreateEventLocation("eventBiomeMeadows", "Entered: Meadows");
+        RandomizerUtils.CreateEventLocation("eventBiomeBlackForest", "Entered: Black Forest");
+        RandomizerUtils.CreateEventLocation("eventBiomeOcean", "Entered: Ocean");
+        RandomizerUtils.CreateEventLocation("eventBiomeSwamp", "Entered: Swamp");
+        RandomizerUtils.CreateEventLocation("eventBiomeMountain", "Entered: Mountain");
+        RandomizerUtils.CreateEventLocation("eventBiomePlains", "Entered: Plains");
+        RandomizerUtils.CreateEventLocation("eventBiomeMistlands", "Entered: Mistlands");
+        RandomizerUtils.CreateEventLocation("eventBiomeAshlands", "Entered: Ashlands");
+        RandomizerUtils.CreateEventLocation("eventBiomeDeepNorth", "Entered: Deep North");
+    }
+
+    static readonly (Heightmap.Biome biome, string eventID)[] BiomeChecks =
+    {
+        (Heightmap.Biome.Meadows, "eventBiomeMeadows"),
+        (Heightmap.Biome.BlackForest, "eventBiomeBlackForest"),
+        (Heightmap.Biome.Ocean, "eventBiomeOcean"),
+        (Heightmap.Biome.Swamp, "eventBiomeSwamp"),
+        (Heightmap.Biome.Mountain, "eventBiomeMountain"),
+        (Heightmap.Biome.Plains, "eventBiomePlains"),
+        (Heightmap.Biome.Mistlands, "eventBiomeMistlands"),
+        (Heightmap.Biome.AshLands, "eventBiomeAshlands"),
+        (Heightmap.Biome.DeepNorth, "eventBiomeDeepNorth"),
+    };
+
+    static void CheckBiomeLocations()
+    {
+        var player = Player.m_localPlayer;
+        if (player == null || ZoneSystem.instance == null) return;
+        var current = player.GetCurrentBiome();
+        foreach (var (biome, eventID) in BiomeChecks)
+        {
+            if ((current & biome) == 0) continue;
+            if (!ActiveBiomes.Contains(eventID)) continue; // not in this seed's location pool
+            if (IsResearchCrafted(eventID)) continue;
+            Log?.LogInfo($"Entered biome {biome}, sending check.");
+            UnlockResearch(eventID);
+        }
     }
 
     private void Update()
@@ -149,6 +200,7 @@ public class ValheimRandomizer : BaseUnityPlugin
         {
             time = 0.0f;
             ArchipelagoConnection.TryFlushPendingLocations();
+            CheckBiomeLocations();
         }
     }
 

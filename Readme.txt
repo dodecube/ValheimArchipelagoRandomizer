@@ -32,7 +32,7 @@ The yaml options "gifts" (0-6) and "pranks" (0-3) add AP items to the Valheim po
 When the Valheim player receives a gift, resources spawn next to them (Wood/Stone/Coal/Honey/Coins/CookedMeat).
 When they receive a prank (Trap), hostile mobs spawn next to them (Greydwarfs/Wolves/Troll/Deathsquitos).
 In a multiworld these items can be placed at any player's locations, so other players send gifts to Valheim by doing their own checks.
-To make room for them, 9 exploration checks were added: first visit to Meadows, Black Forest, Ocean, Swamp, Mountain, Plains, Mistlands, Ashlands, Deep North.
+To keep items == locations, exactly (gifts + pranks) exploration checks exist per seed: first visits to Meadows, Black Forest, Ocean, Swamp, Mountain, Plains, Mistlands, Ashlands, Deep North (in that order). The mod learns which ones exist from slot_data["biomes"].
 Gifts are tracked by server index in received_<slot>.txt next to the DLL so they are never duplicated on relog. If you reuse a slot name for a new seed, delete that file or run the console command apgift_reset.
 Note: spawning happens on the Valheim client, so co-op hosting (host = a player's game) is recommended over a dedicated server.
 

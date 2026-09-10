@@ -1,0 +1,8 @@
+name: Me
+game: Valheim
+requires:
+  version: 0.6.7
+Valheim:
+  goal: Eikthyr
+  gifts: 0
+  pranks: 0

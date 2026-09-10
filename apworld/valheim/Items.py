@@ -394,8 +394,8 @@ def create_items(world: "ValheimWorld"):
             world.multiworld.itempool.append(game_item)
 
     # Gifts & pranks: random types, counts from yaml options.
-    # Max total (6 + 3 = 9) matches the 9 exploration locations, so the pool
-    # stays balanced (items <= locations) even in solo Valheim generation.
+    # Balance: Locations.py creates exactly (gifts + pranks) biome checks,
+    # so items == locations for any option values.
     for _ in range(world.options.gifts.value):
         name = world.random.choice(gift_names)
         gift = _gift_by_name[name]

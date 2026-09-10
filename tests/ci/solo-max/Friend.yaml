@@ -1,0 +1,9 @@
+name: Friend
+game: Valheim
+requires:
+  version: 0.6.7
+Valheim:
+  goal: Yagluth
+  gifts: 6
+  pranks: 3
+  accessibility: locations

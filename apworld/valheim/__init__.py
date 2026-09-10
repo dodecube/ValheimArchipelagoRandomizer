@@ -6,7 +6,7 @@ import itertools
 
 from worlds.AutoWorld import World
 from .Regions import create_regions
-from .Locations import create_locations, location_table
+from .Locations import create_locations, location_table, biome_location_data_table
 from .Items import create_item, create_items, item_table, ValheimItem
 from . import Options
 
@@ -63,8 +63,14 @@ class ValheimWorld(World):
             case _:
                 trophyname="NOMATCH"
 
+        # Tell the mod which biome event checks exist in this seed
+        # (game_id looks like "loc:eventBiomeMeadows" -> event id "eventBiomeMeadows").
+        active_biomes = self.options.gifts.value + self.options.pranks.value
+        biomes = [loc.game_id[4:] for loc in biome_location_data_table[:active_biomes]]
+
         slot_data: Dict[str, Any] = {
-            "goal": trophyname
+            "goal": trophyname,
+            "biomes": biomes,
         }
 
         return slot_data

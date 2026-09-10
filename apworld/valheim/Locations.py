@@ -339,29 +339,48 @@ for line in locations_txt.strip().splitlines():
     current_id += 1
 
 
+# Base checks always exist; Explore (biome) checks are conditional:
+# the first (gifts + pranks) biomes in table order exist in the seed,
+# keeping items == locations for any option values.
+base_location_data_table: List[ValheimLocation] = [loc for loc in location_data_table
+                                                   if loc.location_type != "Explore"]
+biome_location_data_table: List[ValheimLocation] = [loc for loc in location_data_table
+                                                    if loc.location_type == "Explore"]
+
+
+def _create_one(world: "ValheimWorld", location: ValheimLocation):
+    # Use the user-friendly name as the location name
+    location_name = location.user_friendly_name
+
+    # Determine the progress type based on classification
+    progress_type = progress_type_map.get(location.classification, LocationProgressType.DEFAULT)
+
+    # Get the region where the location belongs
+    try:
+        region = world.multiworld.get_region(location.region, world.player)
+    except KeyError:
+        raise ValueError(f"Region '{location.region}' not found for location '{location_name}'.")
+
+    # Create the location and assign it to the region
+    game_location = Location(world.player, location_name, location.id, region)
+    game_location.progress_type = progress_type
+
+    # Assign the location to its parent region
+    region.locations.append(game_location)
+
+
 def create_locations(world: "ValheimWorld"):
     """
     Dynamically create locations for the game world and assign them to regions.
+    Biome checks: exactly (gifts + pranks) of them, so the item pool
+    (281 base + gifts + pranks) always matches the location count.
     """
-    for location in location_data_table:
-        # Use the user-friendly name as the location name
-        location_name = location.user_friendly_name
+    for location in base_location_data_table:
+        _create_one(world, location)
 
-        # Determine the progress type based on classification
-        progress_type = progress_type_map.get(location.classification, LocationProgressType.DEFAULT)
-
-        # Get the region where the location belongs
-        try:
-            region = world.multiworld.get_region(location.region, world.player)
-        except KeyError:
-            raise ValueError(f"Region '{location.region}' not found for location '{location_name}'.")
-
-        # Create the location and assign it to the region
-        game_location = Location(world.player, location_name, location.id, region)
-        game_location.progress_type = progress_type
-
-        # Assign the location to its parent region
-        region.locations.append(game_location)
+    active_biomes = world.options.gifts.value + world.options.pranks.value
+    for location in biome_location_data_table[:active_biomes]:
+        _create_one(world, location)
         
         
 location_table: Dict[str, int] = {location.user_friendly_name: location.id for location in location_data_table}
