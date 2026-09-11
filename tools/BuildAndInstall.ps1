@@ -263,10 +263,13 @@ try {
 
     if (-not $NoPackage) {
         $versionText = "0.0.0"
-        $versionLine = Get-Content (Join-Path $repoRoot "src\ValheimRandomizer.cs") | Where-Object { $_.Contains("ModVersion") } | Select-Object -First 1
+        $versionLine = Get-Content (Join-Path $repoRoot "src\ValheimRandomizer.cs") | Where-Object { $_.Contains("public const string ModVersion") } | Select-Object -First 1
         if ($versionLine) {
-            $versionParts = $versionLine.Split('"')
-            if ($versionParts.Count -gt 1) { $versionText = $versionParts[1] }
+            $firstQuote = $versionLine.IndexOf('"')
+            $secondQuote = $versionLine.IndexOf('"', $firstQuote + 1)
+            if ($firstQuote -ge 0 -and $secondQuote -gt $firstQuote) {
+                $versionText = $versionLine.Substring($firstQuote + 1, $secondQuote - $firstQuote - 1)
+            }
         }
 
         $packageRoot = Join-Path $repoRoot "build\ValheimRandomizer-chat"
