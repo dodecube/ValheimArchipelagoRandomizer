@@ -104,7 +104,7 @@ internal static class ArchipelagoConnection
         }
     }
 
-    private static void AddReceivedItemToGameChat(string message)
+    private static void AddToGameChat(string message)
     {
         if (string.IsNullOrWhiteSpace(message) || Chat.instance == null) return;
 
@@ -116,7 +116,7 @@ internal static class ArchipelagoConnection
         }
         catch (Exception ex)
         {
-            ValheimRandomizer.Log.LogWarning($"Unable to add AP item to game chat: {ex.Message}");
+            ValheimRandomizer.Log.LogWarning($"Unable to add AP message to game chat: {ex.Message}");
         }
     }
 
@@ -140,7 +140,7 @@ internal static class ArchipelagoConnection
             {
                 var receivedMessage = $"Received {name} from {sender}!";
                 MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, receivedMessage);
-                AddReceivedItemToGameChat(receivedMessage);
+                AddToGameChat(receivedMessage);
             }
             ValheimRandomizer.DoUnlockResearch(researchId);
         }
@@ -211,9 +211,11 @@ internal static class ArchipelagoConnection
                 var id = session.Locations.GetLocationIdFromName("Valheim", locationName);
                 session.Locations.CompleteLocationChecks(id);
 
-                // Report the completed check to the AP room chat only after the
-                // location was accepted by the client helper.
-                SendChatMessage($"Sent check '{locationName}'.");
+                // Report the completed check both locally and to the AP room
+                // chat after the location was accepted by the client helper.
+                var sentMessage = $"Sent check '{locationName}'.";
+                SendChatMessage(sentMessage);
+                AddToGameChat(sentMessage);
 
                 // Store the stable research ID.  It avoids duplicate checks and
                 // remains valid if only the display name is changed later.
