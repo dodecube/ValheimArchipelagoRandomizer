@@ -104,7 +104,7 @@ internal static class ArchipelagoConnection
         }
     }
 
-    private static void ProcessReceivedItem(NetworkItem item, bool showLocalMessage)
+    private static void ProcessReceivedItem(ItemInfo item, bool showLocalMessage)
     {
         var name = item.ItemName;
         if (string.IsNullOrEmpty(name)) return;
