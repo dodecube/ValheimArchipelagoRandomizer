@@ -76,17 +76,17 @@ internal static class ArchipelagoConnection
     {
         if (session == null) return;
 
-        if (message is not ItemSendLogMessage itemSendMessage
-            || !itemSendMessage.IsSenderTheActivePlayer)
+        var itemSendMessage = message as ItemSendLogMessage;
+        if (itemSendMessage == null || !itemSendMessage.IsSenderTheActivePlayer)
         {
             return;
         }
 
         try
         {
-            var itemName = session.Items.GetItemName(itemSendMessage.Item.Item);
+            var itemName = itemSendMessage.Item.ItemName;
             var receiver = session.Players.GetPlayerAliasAndName(itemSendMessage.Receiver.Slot);
-            if (string.IsNullOrWhiteSpace(itemName)) itemName = $"item {itemSendMessage.Item.Item}";
+            if (string.IsNullOrWhiteSpace(itemName)) itemName = "unknown item";
             if (string.IsNullOrWhiteSpace(receiver)) receiver = $"player {itemSendMessage.Receiver.Slot}";
 
             var sentItemMessage = $"Sent item '{itemName}' to {receiver}.";
