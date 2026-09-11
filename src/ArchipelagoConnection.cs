@@ -104,6 +104,22 @@ internal static class ArchipelagoConnection
         }
     }
 
+    private static void AddReceivedItemToGameChat(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message) || Chat.instance == null) return;
+
+        try
+        {
+            // AddString writes to the local Valheim chat history. It does not
+            // broadcast a second network message to the room.
+            Chat.instance.AddString("Archipelago", message, Talker.Type.Normal);
+        }
+        catch (Exception ex)
+        {
+            ValheimRandomizer.Log.LogWarning($"Unable to add AP item to game chat: {ex.Message}");
+        }
+    }
+
     private static void ProcessReceivedItem(ItemInfo item, bool showLocalMessage)
     {
         var name = item.ItemName;
@@ -122,7 +138,9 @@ internal static class ArchipelagoConnection
         {
             if (showLocalMessage)
             {
-                MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, $"Received {name} from {sender}!");
+                var receivedMessage = $"Received {name} from {sender}!";
+                MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, receivedMessage);
+                AddReceivedItemToGameChat(receivedMessage);
             }
             ValheimRandomizer.DoUnlockResearch(researchId);
         }
