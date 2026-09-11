@@ -85,11 +85,13 @@ internal static class ArchipelagoConnection
         try
         {
             var itemName = itemSendMessage.Item.ItemName;
+            var itemGame = itemSendMessage.Item.ItemGame;
             var receiver = session.Players.GetPlayerAliasAndName(itemSendMessage.Receiver.Slot);
             if (string.IsNullOrWhiteSpace(itemName)) itemName = "unknown item";
+            if (string.IsNullOrWhiteSpace(itemGame)) itemGame = "unknown game";
             if (string.IsNullOrWhiteSpace(receiver)) receiver = $"player {itemSendMessage.Receiver.Slot}";
 
-            var sentItemMessage = $"Sent item '{itemName}' to {receiver}.";
+            var sentItemMessage = $"Sent item \"{itemName}\" ({itemGame}) to {receiver}";
             AddToGameChat(sentItemMessage);
             ShowCenterMessage(sentItemMessage);
         }
