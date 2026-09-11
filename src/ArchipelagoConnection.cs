@@ -1,16 +1,18 @@
-﻿using System;
+using System;
 using System.Linq;
 using UnityEngine.Events;
 using Archipelago.MultiClient.Net;
 using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Models;
 using Archipelago.MultiClient.Net.Helpers;
+using Archipelago.MultiClient.Net.MessageLog.Messages;
 
 
 internal static class ArchipelagoConnection
 {
     private static ArchipelagoSession session;
     private static bool connected;
+    private static bool receivedItemsInitialized;
 
     public static void Connect(string host, int port, string slot, string password)
     {
@@ -41,7 +43,14 @@ internal static class ArchipelagoConnection
            }
         }
 
-        // Hook item reception
+        // A new session can have a different item stream.  Do not let the
+        // previous connection suppress its chat announcements.
+        gottenItems.Clear();
+        receivedItemsInitialized = false;
+
+        // Subscribe after login so the initial room synchronization does not
+        // echo old item sends into the local game chat.
+        session.MessageLog.OnMessageReceived += OnApMessageReceived;
         session.Items.ItemReceived += OnApItemReceived;
 
         connected = true;
@@ -56,9 +65,68 @@ internal static class ArchipelagoConnection
         ValheimRandomizer.Log.LogInfo("Queue location " + locationName);
 
         if (HasGlobal($"ap_sent:{locationName}")) return;
+        if (ValheimRandomizer.researchToArchipelago.TryGetValue(locationName, out var displayName)
+            && HasGlobal($"ap_sent:{displayName}")) return;
 
         SetGlobal($"ap_pending:{locationName}");
         TryFlushPendingLocations();
+    }
+
+    private static void OnApMessageReceived(LogMessage message)
+    {
+        if (session == null) return;
+
+        var chatMessage = message as ChatLogMessage;
+        if (chatMessage != null)
+        {
+            const string localPrefix = "[Valheim] ";
+
+            // Messages sent by this mod are already added locally when the
+            // event happens. Do not echo those messages a second time when AP
+            // sends them back through room chat.
+            if (chatMessage.IsActivePlayer
+                && chatMessage.Message != null
+                && chatMessage.Message.StartsWith(localPrefix, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var sender = session.Players.GetPlayerAliasAndName(chatMessage.Player.Slot);
+            if (string.IsNullOrWhiteSpace(sender)) sender = "Archipelago";
+            AddToGameChat(sender, chatMessage.Message);
+            return;
+        }
+
+        var serverChatMessage = message as ServerChatLogMessage;
+        if (serverChatMessage != null)
+        {
+            AddToGameChat("Archipelago", serverChatMessage.Message);
+            return;
+        }
+
+        var itemSendMessage = message as ItemSendLogMessage;
+        if (itemSendMessage == null || !itemSendMessage.IsSenderTheActivePlayer)
+        {
+            return;
+        }
+
+        try
+        {
+            var itemName = itemSendMessage.Item.ItemName;
+            var checkName = itemSendMessage.Item.LocationName;
+            var receiver = session.Players.GetPlayerAliasAndName(itemSendMessage.Receiver.Slot);
+            if (string.IsNullOrWhiteSpace(itemName)) itemName = "unknown item";
+            if (string.IsNullOrWhiteSpace(checkName)) checkName = "unknown check";
+            if (string.IsNullOrWhiteSpace(receiver)) receiver = $"player {itemSendMessage.Receiver.Slot}";
+
+            var sentItemMessage = $"Sent item \"{itemName}\" ({checkName}) to {receiver}";
+            AddToGameChat(sentItemMessage);
+            ShowCenterMessage(sentItemMessage);
+        }
+        catch (Exception ex)
+        {
+            ValheimRandomizer.Log.LogWarning($"Unable to show sent AP item in game chat: {ex.Message}");
+        }
     }
 
     private static void OnApItemReceived(ReceivedItemsHelper helper)
@@ -68,50 +136,104 @@ internal static class ArchipelagoConnection
         {
             var item = helper.DequeueItem();
             if (item == null) break;
-
-            var senderID = item.Player;
-            string sender = session.Players.GetPlayerAliasAndName(senderID);
-            if (string.IsNullOrEmpty(sender)) continue;
-
-            var name = item.ItemName;
-            if (string.IsNullOrEmpty(name)) continue;
-
-            if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
-            {
-                MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, $"Received {name} from {sender}!");
-                ValheimRandomizer.DoUnlockResearch(researchId);
-            }
-            else
-            {
-                ValheimRandomizer.Log.LogWarning(
-                    $"Received AP item '{name}' but no research mapping was found.");
-            }
+            // The first AllItemsReceived pass contains the complete historical
+            // inventory. Only items arriving after that pass are announced.
+            ProcessReceivedItem(
+                item,
+                showLocalMessage: receivedItemsInitialized);
         }
     }
 
-    static System.Collections.Generic.List<string> gottenItems = new System.Collections.Generic.List<string>();
+    // A research can only be unlocked once, so one chat message per item name is
+    // enough even if the server replays the item after reconnecting.  This also
+    // prevents the initial AllItemsReceived pass and ItemReceived event from
+    // announcing the same item twice.
+    static readonly System.Collections.Generic.HashSet<string> gottenItems =
+        new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+
+    private static void ShowCenterMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message) || MessageHud.instance == null) return;
+
+        try
+        {
+            // Use Valheim's standard center-message queue. Its normal display
+            // time is close to three seconds and it keeps messages ordered.
+            MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, message);
+        }
+        catch (Exception ex)
+        {
+            ValheimRandomizer.Log.LogWarning($"Unable to show AP message on screen: {ex.Message}");
+        }
+    }
+
+    private static void AddToGameChat(string message)
+        => AddToGameChat("Archipelago", message);
+
+    private static void AddToGameChat(string sender, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message) || Chat.instance == null) return;
+        if (string.IsNullOrWhiteSpace(sender)) sender = "Archipelago";
+
+        try
+        {
+            // AddString writes to the local Valheim chat history. It does not
+            // broadcast a second network message to the room.
+            Chat.instance.AddString(sender, message, Talker.Type.Normal);
+        }
+        catch (Exception ex)
+        {
+            ValheimRandomizer.Log.LogWarning($"Unable to add AP message to game chat: {ex.Message}");
+        }
+    }
+
+    private static void ProcessReceivedItem(
+        ItemInfo item,
+        bool showLocalMessage)
+    {
+        var name = item.ItemName;
+        if (string.IsNullOrEmpty(name)) return;
+
+        if (!gottenItems.Add(name)) return;
+
+        var sender = session.Players.GetPlayerAliasAndName(item.Player);
+        if (string.IsNullOrEmpty(sender)) sender = $"player {item.Player}";
+
+        // Historical items are still applied below, but are not announced.
+        // This prevents reconnecting from filling the room and game chats with
+        // every item ever received by the slot.
+        if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
+        {
+            if (showLocalMessage)
+            {
+                var receivedMessage = $"Received {name} from {sender}!";
+                ShowCenterMessage(receivedMessage);
+                AddToGameChat(receivedMessage);
+            }
+            ValheimRandomizer.DoUnlockResearch(researchId);
+        }
+        else
+        {
+            ValheimRandomizer.Log.LogWarning(
+                $"Received AP item '{name}' but no research mapping was found.");
+        }
+    }
+
     static void TryGetAllItems()
     {
         if (!WorldLoaded()) return;
 
         foreach (var item in session.Items.AllItemsReceived)
         {
-            var name = item.ItemName;
-            if (string.IsNullOrEmpty(name)) continue;
-
-            if (gottenItems.Contains(name)) continue;
-            gottenItems.Add(name);
-
-            if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
-            {
-                ValheimRandomizer.DoUnlockResearch(researchId);
-            }
-            else
-            {
-                ValheimRandomizer.Log.LogWarning(
-                    $"Received AP item '{name}' but no research mapping was found.");
-            }
+            if (item == null) continue;
+            ProcessReceivedItem(
+                item,
+                showLocalMessage: false);
         }
+
+        // From this point on ItemReceived represents items arriving during the
+        // current connection, rather than the historical sync.
+        receivedItemsInitialized = true;
     }
 
     public static void TryFlushPendingLocations()
@@ -120,41 +242,65 @@ internal static class ArchipelagoConnection
         if (!WorldLoaded()) return;
         TryGetAllItems();
 
-        foreach (var key in ZoneSystem.instance.GetGlobalKeys())
+        // Work on a snapshot because successful checks remove their pending key.
+        foreach (var key in ZoneSystem.instance.GetGlobalKeys().ToList())
         {
             if (!key.StartsWith("ap_pending:", StringComparison.Ordinal)) continue;
 
             var researchId = key.Substring("ap_pending:".Length);
-            var locationName = ValheimRandomizer.researchToArchipelago[researchId];
-            if (string.IsNullOrWhiteSpace(locationName)) continue;
+            if (!ValheimRandomizer.researchToArchipelago.TryGetValue(researchId, out var locationName)
+                || string.IsNullOrWhiteSpace(locationName))
+            {
+                ValheimRandomizer.Log.LogWarning(
+                    $"No AP location mapping was found for research '{researchId}'.");
+                continue;
+            }
 
-            if (HasGlobal($"ap_sent:{researchId}")) continue;
+            // Older versions used the display name for this global key.  Accept
+            // both formats so an existing world does not submit the check again.
+            if (HasGlobal($"ap_sent:{researchId}"))
+            {
+                RemoveGlobal(key);
+                continue;
+            }
+
+            if (HasGlobal($"ap_sent:{locationName}"))
+            {
+                RemoveGlobal(key);
+                continue;
+            }
 
             try
             {
                 foreach (string str in ValheimRandomizer.archipelagoToResearch.Keys)
                 {
-                    if (str.ToLower() == locationName)
+                    if (string.Equals(str, locationName, StringComparison.OrdinalIgnoreCase))
                     {
                         locationName = str;
                         break;
                     }
                 }
+
                 ValheimRandomizer.Log.LogInfo("Unlock location " + locationName);
                 var id = session.Locations.GetLocationIdFromName("Valheim", locationName);
                 session.Locations.CompleteLocationChecks(id);
 
-                // NEW: mark success so we don't resend forever
-                SetGlobal($"ap_sent:{locationName}");
+                // Report the completed check in the local Valheim chat after
+                // the location was accepted by the client helper.
+                var sentMessage = $"Sent check '{locationName}'.";
+                AddToGameChat(sentMessage);
+
+                // Store the stable research ID.  It avoids duplicate checks and
+                // remains valid if only the display name is changed later.
+                SetGlobal($"ap_sent:{researchId}");
                 RemoveGlobal(key);
             }
             catch (Exception ex)
             {
-                // NEW: make the problem visible
                 ValheimRandomizer.Log.LogWarning(
                     $"AP location lookup failed for '{locationName}'. " +
                     $"Check the exact name in your AP world. Error: {ex.Message}");
-                // keep pending; will retry next tick/reconnect
+                // Keep pending; retry on the next tick/reconnect.
             }
         }
     }
