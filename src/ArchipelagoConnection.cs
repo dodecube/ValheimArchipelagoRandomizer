@@ -140,8 +140,7 @@ internal static class ArchipelagoConnection
             // inventory. Only items arriving after that pass are announced.
             ProcessReceivedItem(
                 item,
-                showLocalMessage: receivedItemsInitialized,
-                announceMessage: receivedItemsInitialized);
+                showLocalMessage: receivedItemsInitialized);
         }
     }
 
@@ -151,25 +150,6 @@ internal static class ArchipelagoConnection
     // announcing the same item twice.
     static readonly System.Collections.Generic.HashSet<string> gottenItems =
         new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
-
-    private static void SendChatMessage(string message)
-    {
-        if (!connected || session == null || string.IsNullOrWhiteSpace(message)) return;
-
-        try
-        {
-            // Say sends the message to the Archipelago room chat, where it is
-            // visible to all players.  Keep this separate from MessageHud: the
-            // latter is local to Valheim and is easy to miss while playing.
-            session.Say($"[Valheim] {message}");
-        }
-        catch (Exception ex)
-        {
-            // Chat is only an informational add-on; never let a chat failure
-            // interrupt location or item processing.
-            ValheimRandomizer.Log.LogWarning($"Unable to send AP chat message: {ex.Message}");
-        }
-    }
 
     private static void ShowCenterMessage(string message)
     {
@@ -209,8 +189,7 @@ internal static class ArchipelagoConnection
 
     private static void ProcessReceivedItem(
         ItemInfo item,
-        bool showLocalMessage,
-        bool announceMessage)
+        bool showLocalMessage)
     {
         var name = item.ItemName;
         if (string.IsNullOrEmpty(name)) return;
@@ -223,11 +202,6 @@ internal static class ArchipelagoConnection
         // Historical items are still applied below, but are not announced.
         // This prevents reconnecting from filling the room and game chats with
         // every item ever received by the slot.
-        if (announceMessage)
-        {
-            SendChatMessage($"Received item '{name}' from {sender}.");
-        }
-
         if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
         {
             if (showLocalMessage)
@@ -254,8 +228,7 @@ internal static class ArchipelagoConnection
             if (item == null) continue;
             ProcessReceivedItem(
                 item,
-                showLocalMessage: false,
-                announceMessage: false);
+                showLocalMessage: false);
         }
 
         // From this point on ItemReceived represents items arriving during the
@@ -312,10 +285,9 @@ internal static class ArchipelagoConnection
                 var id = session.Locations.GetLocationIdFromName("Valheim", locationName);
                 session.Locations.CompleteLocationChecks(id);
 
-                // Report the completed check both locally and to the AP room
-                // chat after the location was accepted by the client helper.
+                // Report the completed check in the local Valheim chat after
+                // the location was accepted by the client helper.
                 var sentMessage = $"Sent check '{locationName}'.";
-                SendChatMessage(sentMessage);
                 AddToGameChat(sentMessage);
 
                 // Store the stable research ID.  It avoids duplicate checks and
