@@ -4,6 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <ValheimInstallDir>/home/archipelago/Steam/valheim</ValheimInstallDir>
+    <JotunnDllPath Condition="'$(JotunnDllPath)' == ''">$(ValheimInstallDir)/BepInEx/plugins/Jotunn.dll</JotunnDllPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,7 +37,7 @@
       <HintPath>$(ValheimInstallDir)/BepInEx/core/BepInEx.Preloader.dll</HintPath>
     </Reference>
     <Reference Include="Jotunn">
-      <HintPath>$(ValheimInstallDir)/BepInEx/plugins/Jotunn.dll</HintPath>
+      <HintPath>$(JotunnDllPath)</HintPath>
     </Reference>
     <Reference Include="Unity.InputSystem">
       <HintPath>$(ValheimInstallDir)/valheim_Data/Managed/Unity.InputSystem.dll</HintPath>

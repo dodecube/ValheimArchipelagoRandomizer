@@ -8,6 +8,20 @@ Make sure that the 'Randomized' checkbox is checked before connecting to the AP 
 
 There is a non randomized mode in order to play "vanilla" progression.
 
+BUILDING THE CHAT VERSION
+The repository contains `tools/BuildAndInstall.ps1`. It finds a Steam Valheim installation, builds the mod with the installed BepInEx/Jotunn assemblies, installs only the new DLL, and creates `build/ValheimRandomizer-chat-0.2.5.zip` for another player. Existing `research.tsv` and `trophies.tsv` files are never overwritten.
+
+From PowerShell in the repository root:
+
+    Set-ExecutionPolicy -Scope Process Bypass
+    .\tools\BuildAndInstall.ps1
+
+If Steam has several Valheim installations, the script asks which one to use. A path can also be specified explicitly:
+
+    .\tools\BuildAndInstall.ps1 -GamePath "C:\Program Files (x86)\Steam\steamapps\common\Valheim"
+
+Use `-NoInstall` to only build and create the ZIP. The game must be closed while the new DLL is copied.
+
 INSTALLATION (APWORLD)
 Open the apworld file and install normally.
 
@@ -21,6 +35,7 @@ Researching these items at the bench does not directly result in unlocking techn
 When receiving a new technology from an AP check, the build items often won't appear until the game detects the materials required for the first time. This can be from picking up the required materials, or if you already have them, simply rearranging them in your inventory will force the game to examine them again. For example, if you receive Wooden Walls, but do not see them available yet as a build item, picking up more wood or moving wood around in your inventory should make the game notice the recipe and report it to you.
 
 The first time each trophy type is gained, it also results in an AP check being sent. When a trophy is RECEIVED from an AP check, permanent bonuses to various stats, such as Attack/Defense/HP/HP Regen/etc... are gained, based on what type of trophy was obtained.
+The mod also posts each sent check and received item to the Archipelago room chat. This makes the actual runtime check and reward names visible to everyone without relying on a manually maintained list in the mod UI.
 
 
 
