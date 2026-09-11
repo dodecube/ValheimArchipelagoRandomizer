@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
@@ -38,6 +38,9 @@
     </Reference>
     <Reference Include="Jotunn">
       <HintPath>$(JotunnDllPath)</HintPath>
+    </Reference>
+    <Reference Include="Splatform">
+      <HintPath>$(ValheimInstallDir)/valheim_Data/Managed/Splatform.dll</HintPath>
     </Reference>
     <Reference Include="Unity.InputSystem">
       <HintPath>$(ValheimInstallDir)/valheim_Data/Managed/Unity.InputSystem.dll</HintPath>

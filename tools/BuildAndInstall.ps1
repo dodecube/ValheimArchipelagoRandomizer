@@ -172,6 +172,7 @@ function Assert-RequiredFiles([string]$ValheimPath, [string]$JotunnPath) {
         (Join-Path $ValheimPath "valheim_Data\Managed\assembly_guiutils.dll"),
         (Join-Path $ValheimPath "valheim_Data\Managed\assembly_utils.dll"),
         (Join-Path $ValheimPath "valheim_Data\Managed\assembly_valheim.dll"),
+        (Join-Path $ValheimPath "valheim_Data\Managed\Splatform.dll"),
         (Join-Path $ValheimPath "valheim_Data\Managed\UnityEngine.dll"),
         $JotunnPath
     )
