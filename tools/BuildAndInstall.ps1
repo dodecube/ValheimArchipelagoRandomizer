@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     # Set this when Steam is installed in a non-standard location or when the
     # automatic Steam library search finds more than one Valheim installation.
@@ -34,7 +34,9 @@ function Test-ValheimDirectory([string]$Path) {
 function Add-UniquePath([System.Collections.Generic.List[string]]$List, [string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
     try { $normalized = Normalize-Path $Path } catch { return }
-    if (-not $List.Contains($normalized)) {
+    # Windows paths are case-insensitive, so avoid listing the same Steam
+    # library twice when registry and VDF use different capitalization.
+    if (-not ($List -contains $normalized)) {
         $null = $List.Add($normalized)
     }
 }
