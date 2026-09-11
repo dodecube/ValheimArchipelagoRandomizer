@@ -5,6 +5,7 @@ using Archipelago.MultiClient.Net;
 using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Models;
 using Archipelago.MultiClient.Net.Helpers;
+using Archipelago.MultiClient.Net.MessageLog.Messages;
 
 
 internal static class ArchipelagoConnection
@@ -47,7 +48,9 @@ internal static class ArchipelagoConnection
         gottenItems.Clear();
         receivedItemsInitialized = false;
 
-        // Hook item reception
+        // Subscribe after login so the initial room synchronization does not
+        // echo old item sends into the local game chat.
+        session.MessageLog.OnMessageReceived += OnApMessageReceived;
         session.Items.ItemReceived += OnApItemReceived;
 
         connected = true;
@@ -67,6 +70,31 @@ internal static class ArchipelagoConnection
 
         SetGlobal($"ap_pending:{locationName}");
         TryFlushPendingLocations();
+    }
+
+    private static void OnApMessageReceived(LogMessage message)
+    {
+        if (session == null) return;
+
+        if (message is not ItemSendLogMessage itemSendMessage
+            || !itemSendMessage.IsSenderTheActivePlayer)
+        {
+            return;
+        }
+
+        try
+        {
+            var itemName = session.Items.GetItemName(itemSendMessage.Item.Item);
+            var receiver = session.Players.GetPlayerAliasAndName(itemSendMessage.Receiver.Slot);
+            if (string.IsNullOrWhiteSpace(itemName)) itemName = $"item {itemSendMessage.Item.Item}";
+            if (string.IsNullOrWhiteSpace(receiver)) receiver = $"player {itemSendMessage.Receiver.Slot}";
+
+            AddToGameChat($"Sent item '{itemName}' to {receiver}.");
+        }
+        catch (Exception ex)
+        {
+            ValheimRandomizer.Log.LogWarning($"Unable to show sent AP item in game chat: {ex.Message}");
+        }
     }
 
     private static void OnApItemReceived(ReceivedItemsHelper helper)
