@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using UnityEngine.Events;
 using Archipelago.MultiClient.Net;
@@ -41,6 +41,10 @@ internal static class ArchipelagoConnection
            }
         }
 
+        // A new session can have a different item stream.  Do not let the
+        // previous connection suppress its chat announcements.
+        gottenItems.Clear();
+
         // Hook item reception
         session.Items.ItemReceived += OnApItemReceived;
 
@@ -56,6 +60,8 @@ internal static class ArchipelagoConnection
         ValheimRandomizer.Log.LogInfo("Queue location " + locationName);
 
         if (HasGlobal($"ap_sent:{locationName}")) return;
+        if (ValheimRandomizer.researchToArchipelago.TryGetValue(locationName, out var displayName)
+            && HasGlobal($"ap_sent:{displayName}")) return;
 
         SetGlobal($"ap_pending:{locationName}");
         TryFlushPendingLocations();
@@ -68,49 +74,73 @@ internal static class ArchipelagoConnection
         {
             var item = helper.DequeueItem();
             if (item == null) break;
-
-            var senderID = item.Player;
-            string sender = session.Players.GetPlayerAliasAndName(senderID);
-            if (string.IsNullOrEmpty(sender)) continue;
-
-            var name = item.ItemName;
-            if (string.IsNullOrEmpty(name)) continue;
-
-            if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
-            {
-                MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, $"Received {name} from {sender}!");
-                ValheimRandomizer.DoUnlockResearch(researchId);
-            }
-            else
-            {
-                ValheimRandomizer.Log.LogWarning(
-                    $"Received AP item '{name}' but no research mapping was found.");
-            }
+            ProcessReceivedItem(item, showLocalMessage: true);
         }
     }
 
-    static System.Collections.Generic.List<string> gottenItems = new System.Collections.Generic.List<string>();
+    // A research can only be unlocked once, so one chat message per item name is
+    // enough even if the server replays the item after reconnecting.  This also
+    // prevents the initial AllItemsReceived pass and ItemReceived event from
+    // announcing the same item twice.
+    static readonly System.Collections.Generic.HashSet<string> gottenItems =
+        new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+
+    private static void SendChatMessage(string message)
+    {
+        if (!connected || session == null || string.IsNullOrWhiteSpace(message)) return;
+
+        try
+        {
+            // Say sends the message to the Archipelago room chat, where it is
+            // visible to all players.  Keep this separate from MessageHud: the
+            // latter is local to Valheim and is easy to miss while playing.
+            session.Say($"[Valheim] {message}");
+        }
+        catch (Exception ex)
+        {
+            // Chat is only an informational add-on; never let a chat failure
+            // interrupt location or item processing.
+            ValheimRandomizer.Log.LogWarning($"Unable to send AP chat message: {ex.Message}");
+        }
+    }
+
+    private static void ProcessReceivedItem(NetworkItem item, bool showLocalMessage)
+    {
+        var name = item.ItemName;
+        if (string.IsNullOrEmpty(name)) return;
+
+        if (!gottenItems.Add(name)) return;
+
+        var sender = session.Players.GetPlayerAliasAndName(item.Player);
+        if (string.IsNullOrEmpty(sender)) sender = $"player {item.Player}";
+
+        // Unlike the local MessageHud notification, this also tells the other
+        // players which reward arrived and who sent it.
+        SendChatMessage($"Received item '{name}' from {sender}.");
+
+        if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
+        {
+            if (showLocalMessage)
+            {
+                MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, $"Received {name} from {sender}!");
+            }
+            ValheimRandomizer.DoUnlockResearch(researchId);
+        }
+        else
+        {
+            ValheimRandomizer.Log.LogWarning(
+                $"Received AP item '{name}' but no research mapping was found.");
+        }
+    }
+
     static void TryGetAllItems()
     {
         if (!WorldLoaded()) return;
 
         foreach (var item in session.Items.AllItemsReceived)
         {
-            var name = item.ItemName;
-            if (string.IsNullOrEmpty(name)) continue;
-
-            if (gottenItems.Contains(name)) continue;
-            gottenItems.Add(name);
-
-            if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
-            {
-                ValheimRandomizer.DoUnlockResearch(researchId);
-            }
-            else
-            {
-                ValheimRandomizer.Log.LogWarning(
-                    $"Received AP item '{name}' but no research mapping was found.");
-            }
+            if (item == null) continue;
+            ProcessReceivedItem(item, showLocalMessage: false);
         }
     }
 
@@ -120,41 +150,64 @@ internal static class ArchipelagoConnection
         if (!WorldLoaded()) return;
         TryGetAllItems();
 
-        foreach (var key in ZoneSystem.instance.GetGlobalKeys())
+        // Work on a snapshot because successful checks remove their pending key.
+        foreach (var key in ZoneSystem.instance.GetGlobalKeys().ToList())
         {
             if (!key.StartsWith("ap_pending:", StringComparison.Ordinal)) continue;
 
             var researchId = key.Substring("ap_pending:".Length);
-            var locationName = ValheimRandomizer.researchToArchipelago[researchId];
-            if (string.IsNullOrWhiteSpace(locationName)) continue;
+            if (!ValheimRandomizer.researchToArchipelago.TryGetValue(researchId, out var locationName)
+                || string.IsNullOrWhiteSpace(locationName))
+            {
+                ValheimRandomizer.Log.LogWarning(
+                    $"No AP location mapping was found for research '{researchId}'.");
+                continue;
+            }
 
-            if (HasGlobal($"ap_sent:{researchId}")) continue;
+            // Older versions used the display name for this global key.  Accept
+            // both formats so an existing world does not submit the check again.
+            if (HasGlobal($"ap_sent:{researchId}"))
+            {
+                RemoveGlobal(key);
+                continue;
+            }
+
+            if (HasGlobal($"ap_sent:{locationName}"))
+            {
+                RemoveGlobal(key);
+                continue;
+            }
 
             try
             {
                 foreach (string str in ValheimRandomizer.archipelagoToResearch.Keys)
                 {
-                    if (str.ToLower() == locationName)
+                    if (string.Equals(str, locationName, StringComparison.OrdinalIgnoreCase))
                     {
                         locationName = str;
                         break;
                     }
                 }
+
                 ValheimRandomizer.Log.LogInfo("Unlock location " + locationName);
                 var id = session.Locations.GetLocationIdFromName("Valheim", locationName);
                 session.Locations.CompleteLocationChecks(id);
 
-                // NEW: mark success so we don't resend forever
-                SetGlobal($"ap_sent:{locationName}");
+                // Report the completed check to the AP room chat only after the
+                // location was accepted by the client helper.
+                SendChatMessage($"Sent check '{locationName}'.");
+
+                // Store the stable research ID.  It avoids duplicate checks and
+                // remains valid if only the display name is changed later.
+                SetGlobal($"ap_sent:{researchId}");
                 RemoveGlobal(key);
             }
             catch (Exception ex)
             {
-                // NEW: make the problem visible
                 ValheimRandomizer.Log.LogWarning(
                     $"AP location lookup failed for '{locationName}'. " +
                     $"Check the exact name in your AP world. Error: {ex.Message}");
-                // keep pending; will retry next tick/reconnect
+                // Keep pending; retry on the next tick/reconnect.
             }
         }
     }
