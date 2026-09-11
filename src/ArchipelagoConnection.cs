@@ -76,6 +76,34 @@ internal static class ArchipelagoConnection
     {
         if (session == null) return;
 
+        var chatMessage = message as ChatLogMessage;
+        if (chatMessage != null)
+        {
+            const string localPrefix = "[Valheim] ";
+
+            // Messages sent by this mod are already added locally when the
+            // event happens. Do not echo those messages a second time when AP
+            // sends them back through room chat.
+            if (chatMessage.IsActivePlayer
+                && chatMessage.Message != null
+                && chatMessage.Message.StartsWith(localPrefix, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var sender = session.Players.GetPlayerAliasAndName(chatMessage.Player.Slot);
+            if (string.IsNullOrWhiteSpace(sender)) sender = "Archipelago";
+            AddToGameChat(sender, chatMessage.Message);
+            return;
+        }
+
+        var serverChatMessage = message as ServerChatLogMessage;
+        if (serverChatMessage != null)
+        {
+            AddToGameChat("Archipelago", serverChatMessage.Message);
+            return;
+        }
+
         var itemSendMessage = message as ItemSendLogMessage;
         if (itemSendMessage == null || !itemSendMessage.IsSenderTheActivePlayer)
         {
@@ -160,14 +188,18 @@ internal static class ArchipelagoConnection
     }
 
     private static void AddToGameChat(string message)
+        => AddToGameChat("Archipelago", message);
+
+    private static void AddToGameChat(string sender, string message)
     {
         if (string.IsNullOrWhiteSpace(message) || Chat.instance == null) return;
+        if (string.IsNullOrWhiteSpace(sender)) sender = "Archipelago";
 
         try
         {
             // AddString writes to the local Valheim chat history. It does not
             // broadcast a second network message to the room.
-            Chat.instance.AddString("Archipelago", message, Talker.Type.Normal);
+            Chat.instance.AddString(sender, message, Talker.Type.Normal);
         }
         catch (Exception ex)
         {
