@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     # Set this when Steam is installed in a non-standard location or when the
     # automatic Steam library search finds more than one Valheim installation.
@@ -261,8 +261,13 @@ try {
 
     if (-not $NoPackage) {
         $versionText = "0.0.0"
-        $versionMatch = Select-String -Path (Join-Path $repoRoot "src\ValheimRandomizer.cs") -Pattern 'ModVersion\s*=\s*"([^"]+)"'
-        if ($versionMatch) { $versionText = $versionMatch.Matches[0].Groups[1].Value }
+        $versionLine = Get-Content (Join-Path $repoRoot "src\ValheimRandomizer.cs") |
+            Where-Object { $_.Contains("ModVersion") } |
+            Select-Object -First 1
+        if ($versionLine) {
+            $versionParts = $versionLine.Split('"')
+            if ($versionParts.Count -gt 1) { $versionText = $versionParts[1] }
+        }
 
         $packageRoot = Join-Path $repoRoot "build\ValheimRandomizer-chat"
         $packagePlugin = Join-Path $packageRoot "BepInEx\plugins\ValheimRandomizer"
