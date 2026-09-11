@@ -11,6 +11,7 @@ internal static class ArchipelagoConnection
 {
     private static ArchipelagoSession session;
     private static bool connected;
+    private static bool receivedItemsInitialized;
 
     public static void Connect(string host, int port, string slot, string password)
     {
@@ -44,6 +45,7 @@ internal static class ArchipelagoConnection
         // A new session can have a different item stream.  Do not let the
         // previous connection suppress its chat announcements.
         gottenItems.Clear();
+        receivedItemsInitialized = false;
 
         // Hook item reception
         session.Items.ItemReceived += OnApItemReceived;
@@ -74,7 +76,12 @@ internal static class ArchipelagoConnection
         {
             var item = helper.DequeueItem();
             if (item == null) break;
-            ProcessReceivedItem(item, showLocalMessage: true);
+            // The first AllItemsReceived pass contains the complete historical
+            // inventory. Only items arriving after that pass are announced.
+            ProcessReceivedItem(
+                item,
+                showLocalMessage: receivedItemsInitialized,
+                announceMessage: receivedItemsInitialized);
         }
     }
 
@@ -120,7 +127,10 @@ internal static class ArchipelagoConnection
         }
     }
 
-    private static void ProcessReceivedItem(ItemInfo item, bool showLocalMessage)
+    private static void ProcessReceivedItem(
+        ItemInfo item,
+        bool showLocalMessage,
+        bool announceMessage)
     {
         var name = item.ItemName;
         if (string.IsNullOrEmpty(name)) return;
@@ -130,9 +140,13 @@ internal static class ArchipelagoConnection
         var sender = session.Players.GetPlayerAliasAndName(item.Player);
         if (string.IsNullOrEmpty(sender)) sender = $"player {item.Player}";
 
-        // Unlike the local MessageHud notification, this also tells the other
-        // players which reward arrived and who sent it.
-        SendChatMessage($"Received item '{name}' from {sender}.");
+        // Historical items are still applied below, but are not announced.
+        // This prevents reconnecting from filling the room and game chats with
+        // every item ever received by the slot.
+        if (announceMessage)
+        {
+            SendChatMessage($"Received item '{name}' from {sender}.");
+        }
 
         if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
         {
@@ -158,8 +172,15 @@ internal static class ArchipelagoConnection
         foreach (var item in session.Items.AllItemsReceived)
         {
             if (item == null) continue;
-            ProcessReceivedItem(item, showLocalMessage: false);
+            ProcessReceivedItem(
+                item,
+                showLocalMessage: false,
+                announceMessage: false);
         }
+
+        // From this point on ItemReceived represents items arriving during the
+        // current connection, rather than the historical sync.
+        receivedItemsInitialized = true;
     }
 
     public static void TryFlushPendingLocations()
