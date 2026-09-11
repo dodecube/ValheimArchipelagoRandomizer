@@ -89,7 +89,9 @@ internal static class ArchipelagoConnection
             if (string.IsNullOrWhiteSpace(itemName)) itemName = $"item {itemSendMessage.Item.Item}";
             if (string.IsNullOrWhiteSpace(receiver)) receiver = $"player {itemSendMessage.Receiver.Slot}";
 
-            AddToGameChat($"Sent item '{itemName}' to {receiver}.");
+            var sentItemMessage = $"Sent item '{itemName}' to {receiver}.";
+            AddToGameChat(sentItemMessage);
+            ShowCenterMessage(sentItemMessage);
         }
         catch (Exception ex)
         {
@@ -139,6 +141,22 @@ internal static class ArchipelagoConnection
         }
     }
 
+    private static void ShowCenterMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message) || MessageHud.instance == null) return;
+
+        try
+        {
+            // Use Valheim's standard center-message queue. Its normal display
+            // time is close to three seconds and it keeps messages ordered.
+            MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, message);
+        }
+        catch (Exception ex)
+        {
+            ValheimRandomizer.Log.LogWarning($"Unable to show AP message on screen: {ex.Message}");
+        }
+    }
+
     private static void AddToGameChat(string message)
     {
         if (string.IsNullOrWhiteSpace(message) || Chat.instance == null) return;
@@ -181,7 +199,7 @@ internal static class ArchipelagoConnection
             if (showLocalMessage)
             {
                 var receivedMessage = $"Received {name} from {sender}!";
-                MessageHud.instance.ShowMessage(MessageHud.MessageType.Center, receivedMessage);
+                ShowCenterMessage(receivedMessage);
                 AddToGameChat(receivedMessage);
             }
             ValheimRandomizer.DoUnlockResearch(researchId);
