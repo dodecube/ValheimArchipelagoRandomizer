@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     # Set this when Steam is installed in a non-standard location or when the
     # automatic Steam library search finds more than one Valheim installation.
@@ -115,7 +115,7 @@ function Select-GamePath {
     if (-not [string]::IsNullOrWhiteSpace($GamePath)) {
         $explicit = Normalize-Path $GamePath
         if (-not (Test-ValheimDirectory $explicit)) {
-            throw "Valheim не найден по пути: $explicit"
+            throw "Valheim was not found at: $explicit"
         }
         return $explicit
     }
@@ -126,23 +126,23 @@ function Select-GamePath {
     }
 
     if ($found.Count -gt 1) {
-        Write-Host "Найдено несколько установок Valheim:" -ForegroundColor Yellow
+        Write-Host "Multiple Valheim installations found:" -ForegroundColor Yellow
         for ($i = 0; $i -lt $found.Count; $i++) {
             Write-Host "[$($i + 1)] $($found[$i])"
         }
-        $choice = Read-Host "Выбери номер установки"
+        $choice = Read-Host "Choose an installation number"
         $number = 0
         if (-not [int]::TryParse($choice, [ref]$number) -or
             $number -lt 1 -or $number -gt $found.Count) {
-            throw "Некорректный номер установки. Можно указать путь вручную через -GamePath."
+            throw "Invalid installation number. Use -GamePath to specify the path manually."
         }
         return $found[$number - 1]
     }
 
-    $entered = Read-Host "Путь к папке Valheim не найден автоматически. Укажи его вручную"
+    $entered = Read-Host "Valheim was not found automatically. Enter its path manually"
     $entered = Normalize-Path $entered
     if (-not (Test-ValheimDirectory $entered)) {
-        throw "Valheim не найден по пути: $entered"
+        throw "Valheim was not found at: $entered"
     }
     return $entered
 }
@@ -157,7 +157,7 @@ function Find-JotunnDll([string]$ValheimPath) {
         if ($found.Count -gt 0) { return $found[0].FullName }
     }
 
-    throw "Jotunn.dll не найден в $plugins. Установи Jotunn перед сборкой."
+    throw "Jotunn.dll was not found in $plugins. Install Jotunn before building."
 }
 
 function Assert-RequiredFiles([string]$ValheimPath, [string]$JotunnPath) {
@@ -176,9 +176,9 @@ function Assert-RequiredFiles([string]$ValheimPath, [string]$JotunnPath) {
 
     $missing = @($required | Where-Object { -not (Test-Path $_) })
     if ($missing.Count -gt 0) {
-        Write-Host "Не найдены файлы, необходимые для сборки:" -ForegroundColor Red
+        Write-Host "Required build files are missing:" -ForegroundColor Red
         $missing | ForEach-Object { Write-Host "  $_" }
-        throw "Проверь BepInEx, Jotunn и файлы Valheim."
+        throw "Check BepInEx, Jotunn, and the Valheim files."
     }
 }
 
@@ -186,7 +186,7 @@ function Invoke-DotNet([string[]]$Arguments) {
     Write-Host "dotnet $($Arguments -join ' ')" -ForegroundColor Cyan
     & dotnet @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Команда dotnet завершилась с кодом $LASTEXITCODE."
+        throw "dotnet command failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -196,25 +196,25 @@ function Backup-File([string]$Path, [string]$Stamp) {
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
         $backup = Join-Path $backupDir "ValheimRandomizer.dll.$Stamp.bak"
         Copy-Item -LiteralPath $Path -Destination $backup -Force
-        Write-Host "Резервная копия: $backup" -ForegroundColor DarkGray
+        Write-Host "Backup: $backup" -ForegroundColor DarkGray
     }
 }
 
 try {
     if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-        throw "dotnet не найден. Установи .NET SDK 8 или новее и запусти скрипт снова."
+        throw "dotnet was not found. Install .NET SDK 8 or newer and try again."
     }
 
-    if (-not (Test-Path $project)) { throw "Проект не найден: $project" }
-    if (-not (Test-Path $sourcePlugin)) { throw "Не найдены зависимости в репозитории: $sourcePlugin" }
+    if (-not (Test-Path $project)) { throw "Project was not found: $project" }
+    if (-not (Test-Path $sourcePlugin)) { throw "Repository dependencies were not found: $sourcePlugin" }
 
     $selectedGamePath = Select-GamePath
     $jotunnPath = Find-JotunnDll $selectedGamePath
     Assert-RequiredFiles $selectedGamePath $jotunnPath
 
-    Write-Host "Игра:       $selectedGamePath" -ForegroundColor Green
+    Write-Host "Game:       $selectedGamePath" -ForegroundColor Green
     Write-Host "Jotunn:     $jotunnPath" -ForegroundColor Green
-    Write-Host "Репозиторий: $repoRoot" -ForegroundColor Green
+    Write-Host "Repository: $repoRoot" -ForegroundColor Green
 
     $buildProperties = @(
         "-p:ValheimInstallDir=$selectedGamePath",
@@ -227,7 +227,7 @@ try {
     Invoke-DotNet $buildArguments
 
     $builtDll = Join-Path $repoRoot "src\bin\$configuration\netstandard2.1\ValheimRandomizer.dll"
-    if (-not (Test-Path $builtDll)) { throw "После сборки DLL не найдена: $builtDll" }
+    if (-not (Test-Path $builtDll)) { throw "The built DLL was not found: $builtDll" }
 
     $pluginDir = Join-Path $selectedGamePath "BepInEx\plugins\ValheimRandomizer"
     New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
@@ -237,12 +237,12 @@ try {
     if (-not $NoInstall) {
         $valheimProcess = Get-Process -Name "valheim" -ErrorAction SilentlyContinue
         if ($valheimProcess) {
-            throw "Valheim сейчас запущен. Закрой игру и запусти скрипт снова."
+            throw "Valheim is running. Close the game and try again."
         }
 
         Backup-File $installedDll $stamp
         Copy-Item -LiteralPath $builtDll -Destination $installedDll -Force
-        Write-Host "Новая DLL установлена: $installedDll" -ForegroundColor Green
+        Write-Host "New DLL installed: $installedDll" -ForegroundColor Green
 
         # Do not overwrite existing TSV files: they may contain custom content
         # required by the current Archipelago run. Copy them only on a fresh
@@ -252,11 +252,11 @@ try {
             $source = Join-Path $sourcePlugin $name
             if (-not (Test-Path $destination) -and (Test-Path $source)) {
                 Copy-Item -LiteralPath $source -Destination $destination
-                Write-Host "Добавлен отсутствующий файл: $name" -ForegroundColor DarkGray
+                Write-Host "Added missing file: $name" -ForegroundColor DarkGray
             }
         }
     } else {
-        Write-Host "Установка пропущена из-за -NoInstall." -ForegroundColor Yellow
+        Write-Host "Installation skipped because of -NoInstall." -ForegroundColor Yellow
     }
 
     if (-not $NoPackage) {
@@ -301,11 +301,11 @@ try {
         }
 
         Compress-Archive -Path (Join-Path $packageRoot "BepInEx") -DestinationPath $packageZip -Force
-        Write-Host "Архив для друга: $packageZip" -ForegroundColor Green
+        Write-Host "Archive for friend: $packageZip" -ForegroundColor Green
     }
 
-    Write-Host "Готово. Перезапусти Valheim и подключись к той же комнате Archipelago." -ForegroundColor Green
+    Write-Host "Done. Restart Valheim and connect to the same Archipelago room." -ForegroundColor Green
 } catch {
-    Write-Host "ОШИБКА: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host ('ERROR: ' + $_.Exception.Message) -ForegroundColor Red
     exit 1
 }
