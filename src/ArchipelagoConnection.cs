@@ -6,6 +6,7 @@ using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Models;
 using Archipelago.MultiClient.Net.Helpers;
 using Archipelago.MultiClient.Net.MessageLog.Messages;
+using Archipelago.MultiClient.Net.Packets;
 
 
 internal static class ArchipelagoConnection
@@ -47,6 +48,7 @@ internal static class ArchipelagoConnection
         // previous connection suppress its chat announcements.
         gottenItems.Clear();
         receivedItemsInitialized = false;
+        MainThreadDispatcher.Clear();
 
         // Subscribe after login so the initial room synchronization does not
         // echo old item sends into the local game chat.
@@ -79,14 +81,12 @@ internal static class ArchipelagoConnection
         var chatMessage = message as ChatLogMessage;
         if (chatMessage != null)
         {
-            const string localPrefix = "[Valheim] ";
-
-            // Messages sent by this mod are already added locally when the
-            // event happens. Do not echo those messages a second time when AP
-            // sends them back through room chat.
+            // Messages sent by this client are already visible in the local
+            // Valheim chat. Do not echo those a second time when AP sends them
+            // back through room chat.
             if (chatMessage.IsActivePlayer
                 && chatMessage.Message != null
-                && chatMessage.Message.StartsWith(localPrefix, StringComparison.Ordinal))
+                && chatMessage.Message.StartsWith(ApChatPrefix, StringComparison.Ordinal))
             {
                 return;
             }
@@ -131,17 +131,22 @@ internal static class ArchipelagoConnection
 
     private static void OnApItemReceived(ReceivedItemsHelper helper)
     {
-        if (!WorldLoaded()) return;
-        while (true)
+        // Raised on the Archipelago socket thread; everything below touches
+        // Unity state, so hand it over to the main thread.
+        MainThreadDispatcher.Enqueue(() =>
         {
-            var item = helper.DequeueItem();
-            if (item == null) break;
-            // The first AllItemsReceived pass contains the complete historical
-            // inventory. Only items arriving after that pass are announced.
-            ProcessReceivedItem(
-                item,
-                showLocalMessage: receivedItemsInitialized);
-        }
+            if (!WorldLoaded()) return;
+            while (true)
+            {
+                var item = helper.DequeueItem();
+                if (item == null) break;
+                // The first AllItemsReceived pass contains the complete historical
+                // inventory. Only items arriving after that pass are announced.
+                ProcessReceivedItem(
+                    item,
+                    showLocalMessage: receivedItemsInitialized);
+            }
+        });
     }
 
     // A research can only be unlocked once, so one chat message per item name is
@@ -153,7 +158,13 @@ internal static class ArchipelagoConnection
 
     private static void ShowCenterMessage(string message)
     {
-        if (string.IsNullOrWhiteSpace(message) || MessageHud.instance == null) return;
+        if (string.IsNullOrWhiteSpace(message)) return;
+        MainThreadDispatcher.Enqueue(() => ShowCenterMessageOnMainThread(message));
+    }
+
+    private static void ShowCenterMessageOnMainThread(string message)
+    {
+        if (MessageHud.instance == null) return;
 
         try
         {
@@ -167,13 +178,48 @@ internal static class ArchipelagoConnection
         }
     }
 
+    /// <summary>
+    /// Local chat prefix used for messages this client forwards into the
+    /// Archipelago room, so the echo coming back can be filtered out.
+    /// </summary>
+    public const string ApChatPrefix = "[Valheim] ";
+
+    /// <summary>
+    /// Sends a line written by the local player into the Archipelago room chat,
+    /// where other games (Stardew Valley, ...) can pick it up.
+    /// </summary>
+    public static void SendChatToArchipelago(string message)
+    {
+        if (!connected || session?.Socket == null) return;
+        if (string.IsNullOrWhiteSpace(message)) return;
+
+        try
+        {
+            session.Socket.SendPacketAsync(new SayPacket { Text = ApChatPrefix + message });
+        }
+        catch (Exception ex)
+        {
+            ValheimRandomizer.Log.LogWarning($"Unable to send chat to Archipelago: {ex.Message}");
+        }
+    }
+
     private static void AddToGameChat(string message)
         => AddToGameChat("Archipelago", message);
 
     private static void AddToGameChat(string sender, string message)
     {
-        if (string.IsNullOrWhiteSpace(message) || Chat.instance == null) return;
+        if (string.IsNullOrWhiteSpace(message)) return;
         if (string.IsNullOrWhiteSpace(sender)) sender = "Archipelago";
+
+        // Archipelago raises its events on the socket thread.  Touching Unity
+        // objects from there throws, so the actual chat write is deferred to
+        // the next Update tick on the main thread.
+        MainThreadDispatcher.Enqueue(() => AddToGameChatOnMainThread(sender, message));
+    }
+
+    private static void AddToGameChatOnMainThread(string sender, string message)
+    {
+        if (Chat.instance == null) return;
 
         try
         {

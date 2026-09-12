@@ -380,4 +380,52 @@ public static class Patches
             dmg.m_chop *= mul;
         }
     }
+
+    // ---------- Valheim chat -> Archipelago room chat ----------
+    // Terminal.InputText runs once when the local player submits a line in the
+    // chat window. Forward it to the Archipelago room so the other games in the
+    // multiworld (Stardew Valley, ...) receive it.
+    [HarmonyPatch]
+    internal static class Chat_InputText_ApRelay_Patch
+    {
+        // Chat overrides Terminal.InputText, but fall back to the base
+        // declaration so the patch also applies if that ever changes.
+        static MethodBase TargetMethod()
+            => AccessTools.Method(typeof(Chat), "InputText")
+               ?? AccessTools.Method(typeof(Terminal), "InputText");
+
+        // Terminal.m_input is read through reflection so the patch keeps
+        // compiling if the field's accessibility or type changes.
+        private static readonly FieldInfo InputField =
+            AccessTools.Field(typeof(Terminal), "m_input");
+
+        // Prefix: the original implementation clears the input box.
+        private static void Prefix(Terminal __instance)
+        {
+            try
+            {
+                if (!ValheimRandomizer.randomized.Value) return;
+                if (!ValheimRandomizer.relayChatToArchipelago.Value) return;
+                if (!(__instance is Chat) || InputField == null) return;
+
+                var input = InputField.GetValue(__instance);
+                if (input == null) return;
+
+                var text = AccessTools.Property(input.GetType(), "text")?.GetValue(input, null) as string;
+                if (string.IsNullOrEmpty(text)) return;
+
+                text = text.Trim();
+                if (text.Length == 0) return;
+
+                // Slash commands (/s, /w, /god, ...) stay local.
+                if (text.StartsWith("/", StringComparison.Ordinal)) return;
+
+                ArchipelagoConnection.SendChatToArchipelago(text);
+            }
+            catch (Exception ex)
+            {
+                ValheimRandomizer.Log?.LogWarning($"Unable to relay chat to Archipelago: {ex.Message}");
+            }
+        }
+    }
 }

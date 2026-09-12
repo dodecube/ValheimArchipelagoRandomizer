@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using UnityEngine;
 using Jotunn;
 using Jotunn.Configs;
@@ -29,6 +29,7 @@ public class ValheimRandomizer : BaseUnityPlugin
     internal static BepInEx.Configuration.ConfigEntry<int> archipelagoPort;
     internal static BepInEx.Configuration.ConfigEntry<string> archipelagoSlot;
     internal static BepInEx.Configuration.ConfigEntry<string> archipelagoPassword;
+    internal static BepInEx.Configuration.ConfigEntry<bool> relayChatToArchipelago;
 
 
 
@@ -75,6 +76,7 @@ public class ValheimRandomizer : BaseUnityPlugin
         archipelagoPort = Config.Bind("Archipelago", "Port", 38281, "Archipelago server port");
         archipelagoSlot = Config.Bind("Archipelago", "Slot", "Player", "Your Archipelago slot name");
         archipelagoPassword = Config.Bind("Archipelago", "Password", "", "Archipelago password (if any)");
+        relayChatToArchipelago = Config.Bind("Archipelago", "Relay Chat", true, "Send what you type in the Valheim chat to the Archipelago room chat, so other games in the multiworld can read it. Slash commands are never sent.");
 
         ValheimRandomizer.Log = this.Logger;
         PrefabManager.OnVanillaPrefabsAvailable += DoOnPrefabsAvailable;
@@ -95,6 +97,10 @@ public class ValheimRandomizer : BaseUnityPlugin
 
     private void Update()
     {
+        // Archipelago events arrive on the socket thread. They queue their
+        // Unity work here so it runs on the main thread.
+        MainThreadDispatcher.Drain();
+
         if (currentPlayer != Player.m_localPlayer)
         {
             if (currentPlayer != null && currentPlayer.GetInventory() != null)
