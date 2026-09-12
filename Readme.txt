@@ -8,8 +8,17 @@ Make sure that the 'Randomized' checkbox is checked before connecting to the AP 
 
 There is a non randomized mode in order to play "vanilla" progression.
 
+MULTIPLAYER REQUIREMENT
+Every player who joins a randomized Valheim world must install the same current Randomizer archive (DLL, dependencies, `research.tsv`, and `trophies.tsv`) and enable `Randomized?` before joining. The recipe/build gates are Harmony patches that run in each game client; installing the mod only on the host or only on one player cannot restrict an unmodded friend's recipes.
+
+Each player should connect using their own Archipelago slot. Starting with version 0.2.6, received technologies, completed research, and queued AP checks are stored with the local character and AP slot, rather than as Valheim world-global keys. Consequently, one co-op player's AP items can no longer unlock every other player's recipes or cause another player's AP checks to be sent.
+
+When upgrading an existing 0.2.5-or-earlier randomized world, have every player update before joining. The old world-global Randomizer keys are deliberately ignored. After each player loads the world and reconnects to their own AP slot, the mod rebuilds that player's received technologies and completed research from Archipelago's item and checked-location history. Back up the world and character files before upgrading. In non-randomized mode there is no AP history to restore, so research must be completed again after the upgrade.
+
+A recipe that is merely visible but greyed out is not necessarily unlocked: Valheim keeps recipes visible once its normal material-discovery rule is met. The Randomizer's gate prevents crafting/building until the required research is received. If a friend can actually craft a gated recipe, first confirm their BepInEx log shows Randomizer 0.2.6 and that `Randomized?` is enabled.
+
 BUILDING THE CHAT VERSION
-The repository contains `tools/BuildAndInstall.ps1`. It finds a Steam Valheim installation, builds the mod with the installed BepInEx/Jotunn assemblies, installs only the new DLL, and creates `build/ValheimRandomizer-chat-0.2.5.zip` for another player. Existing `research.tsv` and `trophies.tsv` files are never overwritten.
+The repository contains `tools/BuildAndInstall.ps1`. It finds a Steam Valheim installation, builds the mod with the installed BepInEx/Jotunn assemblies, installs only the new DLL, and creates `build/ValheimRandomizer-chat-0.2.6.zip` for another player. Existing `research.tsv` and `trophies.tsv` files are never overwritten.
 
 From PowerShell in the repository root:
 

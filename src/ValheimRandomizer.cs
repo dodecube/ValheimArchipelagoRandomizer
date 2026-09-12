@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using UnityEngine;
 using Jotunn;
 using Jotunn.Configs;
@@ -18,7 +18,7 @@ public class ValheimRandomizer : BaseUnityPlugin
 {
     public const string ModGuid = "com.samupo.randomizer";
     public const string ModName = "Randomizer";
-    public const string ModVersion = "0.2.5";
+    public const string ModVersion = "0.2.6";
 
     public static string Goal;
 
@@ -156,15 +156,84 @@ public class ValheimRandomizer : BaseUnityPlugin
         }
     }
 
+    // Research used to be stored in ZoneSystem global keys.  Global keys are
+    // replicated to every player in a Valheim world, which meant that one AP
+    // slot's received technology unlocked recipes for every other player.
+    // Player.m_customData is saved with, and belongs to, a single character,
+    // so it is the appropriate place for AP-slot-specific progress.
+    private const string PlayerStatePrefix = ModGuid + ".research.v2:";
+    private const string StateValue = "1";
+
+    private static string GetPlayerStatePrefix()
+    {
+        // Player custom data follows the character between worlds.  Include the
+        // world and AP connection identity so an old run cannot unlock recipes
+        // in another world or another AP slot.  Passwords are deliberately not
+        // part of the key.
+        string worldName = ZNet.instance != null ? ZNet.instance.GetWorldName() : "unknown-world";
+        if (string.IsNullOrWhiteSpace(worldName)) worldName = "unknown-world";
+
+        string scope = "local";
+        if (randomized != null && randomized.Value)
+        {
+            string host = archipelagoHostname?.Value ?? "unknown-host";
+            string port = archipelagoPort?.Value.ToString() ?? "unknown-port";
+            string slot = archipelagoSlot?.Value ?? "unknown-slot";
+            scope = host + ":" + port + ":" + slot;
+        }
+
+        return PlayerStatePrefix + worldName + ":" + scope + ":";
+    }
+
+    private static bool TryGetPlayerCustomData(out Dictionary<string, string> customData)
+    {
+        customData = null;
+        var player = Player.m_localPlayer;
+        if (player == null || player.m_customData == null) return false;
+
+        customData = player.m_customData;
+        return true;
+    }
+
+    private static string GetPlayerStateKey(string category, string id)
+        => GetPlayerStatePrefix() + category + ":" + id;
+
+    private static bool HasPlayerState(string category, string id)
+    {
+        return !string.IsNullOrWhiteSpace(id)
+            && TryGetPlayerCustomData(out var customData)
+            && customData.ContainsKey(GetPlayerStateKey(category, id));
+    }
+
+    private static void SetPlayerState(string category, string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        if (!TryGetPlayerCustomData(out var customData)) return;
+
+        customData[GetPlayerStateKey(category, id)] = StateValue;
+    }
+
+    private static void RemovePlayerState(string category, string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        if (!TryGetPlayerCustomData(out var customData)) return;
+
+        customData.Remove(GetPlayerStateKey(category, id));
+    }
+
     public static void DoUnlockResearch(string research)
     {
-        Log.LogInfo("Research unlocked: " + research);
-        ZoneSystem.instance.SetGlobalKey(research);
+        if (string.IsNullOrWhiteSpace(research)) return;
+
+        Log?.LogInfo("Research unlocked: " + research);
+        SetPlayerState("unlocked", research);
     }
 
     public static void UnlockResearch(string research)
     {
-        ZoneSystem.instance.SetGlobalKey(research + "_crafted");
+        if (string.IsNullOrWhiteSpace(research)) return;
+
+        SetResearchCrafted(research);
         if (randomized.Value)
         {
             ArchipelagoConnection.SendLocation(research);
@@ -176,13 +245,43 @@ public class ValheimRandomizer : BaseUnityPlugin
     }
 
     public static bool IsResearchUnlocked(string research)
-    {
-        return ZoneSystem.instance.GetGlobalKey(research);
-    }
+        => HasPlayerState("unlocked", research);
 
     public static bool IsResearchCrafted(string research)
+        => HasPlayerState("crafted", research);
+
+    internal static void SetResearchCrafted(string research)
+        => SetPlayerState("crafted", research);
+
+    // AP checks are personal too.  Keeping these flags in world-global keys
+    // caused a second player to submit another player's pending location.
+    internal static bool IsLocationSent(string research)
+        => HasPlayerState("location-sent", research);
+
+    internal static void SetLocationSent(string research)
+        => SetPlayerState("location-sent", research);
+
+    internal static void QueueLocation(string research)
+        => SetPlayerState("location-pending", research);
+
+    internal static void RemovePendingLocation(string research)
+        => RemovePlayerState("location-pending", research);
+
+    internal static List<string> GetPendingLocations()
     {
-        return ZoneSystem.instance.GetGlobalKey(research + "_crafted");
+        var pending = new List<string>();
+        if (!TryGetPlayerCustomData(out var customData)) return pending;
+
+        string prefix = GetPlayerStatePrefix() + "location-pending:";
+        foreach (string key in customData.Keys)
+        {
+            if (!key.StartsWith(prefix, StringComparison.Ordinal)) continue;
+
+            string research = key.Substring(prefix.Length);
+            if (!string.IsNullOrWhiteSpace(research)) pending.Add(research);
+        }
+
+        return pending;
     }
 
     public static void AddResearchRequirement(string itemID, params string[] researches)
