@@ -13,7 +13,6 @@ internal static class ArchipelagoConnection
     private static ArchipelagoSession session;
     private static bool connected;
     private static bool receivedItemsInitialized;
-    private static bool completedLocationsSynchronized;
 
     public static void Connect(string host, int port, string slot, string password)
     {
@@ -47,9 +46,7 @@ internal static class ArchipelagoConnection
         // A new session can have a different item stream.  Do not let the
         // previous connection suppress its chat announcements.
         gottenItems.Clear();
-        unmappedItemsWarned.Clear();
         receivedItemsInitialized = false;
-        completedLocationsSynchronized = false;
 
         // Subscribe after login so the initial room synchronization does not
         // echo old item sends into the local game chat.
@@ -59,20 +56,19 @@ internal static class ArchipelagoConnection
         connected = true;
     }
 
-    public static void SendLocation(string researchId)
+    public static void SendLocation(string locationName)
     {
         if (!ValheimRandomizer.randomized.Value) return;
         if (!WorldLoaded()) return;
-        if (string.IsNullOrWhiteSpace(researchId)) return;
+        if (string.IsNullOrWhiteSpace(locationName)) return;
 
-        ValheimRandomizer.Log.LogInfo("Queue location " + researchId);
+        ValheimRandomizer.Log.LogInfo("Queue location " + locationName);
 
-        // These flags must be local to the AP slot.  ZoneSystem global keys are
-        // shared by everyone in a co-op world and previously let one client
-        // flush another client's pending checks.
-        if (ValheimRandomizer.IsLocationSent(researchId)) return;
+        if (HasGlobal($"ap_sent:{locationName}")) return;
+        if (ValheimRandomizer.researchToArchipelago.TryGetValue(locationName, out var displayName)
+            && HasGlobal($"ap_sent:{displayName}")) return;
 
-        ValheimRandomizer.QueueLocation(researchId);
+        SetGlobal($"ap_pending:{locationName}");
         TryFlushPendingLocations();
     }
 
@@ -155,11 +151,6 @@ internal static class ArchipelagoConnection
     static readonly System.Collections.Generic.HashSet<string> gottenItems =
         new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
 
-    // Keep retrying unmapped items because definitions may still be loading,
-    // but avoid a warning every two seconds for a permanently mismatched TSV.
-    static readonly System.Collections.Generic.HashSet<string> unmappedItemsWarned =
-        new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
-
     private static void ShowCenterMessage(string message)
     {
         if (string.IsNullOrWhiteSpace(message) || MessageHud.instance == null) return;
@@ -203,20 +194,6 @@ internal static class ArchipelagoConnection
         var name = item.ItemName;
         if (string.IsNullOrEmpty(name)) return;
 
-        // Definitions are registered a few seconds after the game loads.  Do
-        // not mark an item as processed until its mapping exists, otherwise an
-        // initial AP sync can permanently discard a valid received technology.
-        if (!ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
-        {
-            if (unmappedItemsWarned.Add(name))
-            {
-                ValheimRandomizer.Log.LogWarning(
-                    $"Received AP item '{name}' but no research mapping was found.");
-            }
-            return;
-        }
-
-        unmappedItemsWarned.Remove(name);
         if (!gottenItems.Add(name)) return;
 
         var sender = session.Players.GetPlayerAliasAndName(item.Player);
@@ -225,23 +202,26 @@ internal static class ArchipelagoConnection
         // Historical items are still applied below, but are not announced.
         // This prevents reconnecting from filling the room and game chats with
         // every item ever received by the slot.
-        if (showLocalMessage)
+        if (ValheimRandomizer.archipelagoToResearch.TryGetValue(name, out var researchId))
         {
-            var receivedMessage = $"Received {name} from {sender}!";
-            ShowCenterMessage(receivedMessage);
-            AddToGameChat(receivedMessage);
+            if (showLocalMessage)
+            {
+                var receivedMessage = $"Received {name} from {sender}!";
+                ShowCenterMessage(receivedMessage);
+                AddToGameChat(receivedMessage);
+            }
+            ValheimRandomizer.DoUnlockResearch(researchId);
         }
-        ValheimRandomizer.DoUnlockResearch(researchId);
+        else
+        {
+            ValheimRandomizer.Log.LogWarning(
+                $"Received AP item '{name}' but no research mapping was found.");
+        }
     }
 
     static void TryGetAllItems()
     {
         if (!WorldLoaded()) return;
-
-        // AddResearchRecipes and AddTrophyResearches populate this map after
-        // prefab registration.  Wait instead of consuming the initial item
-        // stream before these definitions are available.
-        if (ValheimRandomizer.archipelagoToResearch.Count == 0) return;
 
         foreach (var item in session.Items.AllItemsReceived)
         {
@@ -261,17 +241,13 @@ internal static class ArchipelagoConnection
         if (!connected || session == null) return;
         if (!WorldLoaded()) return;
         TryGetAllItems();
-        if (!completedLocationsSynchronized && ValheimRandomizer.researchToArchipelago.Count > 0)
-        {
-            SyncCompletedLocations();
-            completedLocationsSynchronized = true;
-        }
 
-        // Pending/sent state is stored with the local player rather than in
-        // ZoneSystem.  A player may therefore only submit checks for their own
-        // configured Archipelago slot.
-        foreach (var researchId in ValheimRandomizer.GetPendingLocations())
+        // Work on a snapshot because successful checks remove their pending key.
+        foreach (var key in ZoneSystem.instance.GetGlobalKeys().ToList())
         {
+            if (!key.StartsWith("ap_pending:", StringComparison.Ordinal)) continue;
+
+            var researchId = key.Substring("ap_pending:".Length);
             if (!ValheimRandomizer.researchToArchipelago.TryGetValue(researchId, out var locationName)
                 || string.IsNullOrWhiteSpace(locationName))
             {
@@ -280,36 +256,44 @@ internal static class ArchipelagoConnection
                 continue;
             }
 
-            if (ValheimRandomizer.IsLocationSent(researchId))
+            // Older versions used the display name for this global key.  Accept
+            // both formats so an existing world does not submit the check again.
+            if (HasGlobal($"ap_sent:{researchId}"))
             {
-                ValheimRandomizer.RemovePendingLocation(researchId);
+                RemoveGlobal(key);
+                continue;
+            }
+
+            if (HasGlobal($"ap_sent:{locationName}"))
+            {
+                RemoveGlobal(key);
                 continue;
             }
 
             try
             {
-                ValheimRandomizer.Log.LogInfo("Unlock location " + locationName);
-                var id = session.Locations.GetLocationIdFromName("Valheim", locationName);
-
-                // The server can already know the check after a reconnect or a
-                // successful earlier request.  Mark it locally without sending
-                // a duplicate in that case.
-                if (session.Locations.AllLocationsChecked.Contains(id))
+                foreach (string str in ValheimRandomizer.archipelagoToResearch.Keys)
                 {
-                    MarkLocationCompleted(researchId);
-                    continue;
+                    if (string.Equals(str, locationName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        locationName = str;
+                        break;
+                    }
                 }
 
+                ValheimRandomizer.Log.LogInfo("Unlock location " + locationName);
+                var id = session.Locations.GetLocationIdFromName("Valheim", locationName);
                 session.Locations.CompleteLocationChecks(id);
 
-                // CompleteLocationChecks throws if it cannot queue the packet.
-                // Once queued, keep the stable ID in this character's state so
-                // reconnecting this AP slot does not submit the check again.
-                ValheimRandomizer.SetLocationSent(researchId);
-                ValheimRandomizer.RemovePendingLocation(researchId);
-
+                // Report the completed check in the local Valheim chat after
+                // the location was accepted by the client helper.
                 var sentMessage = $"Sent check '{locationName}'.";
                 AddToGameChat(sentMessage);
+
+                // Store the stable research ID.  It avoids duplicate checks and
+                // remains valid if only the display name is changed later.
+                SetGlobal($"ap_sent:{researchId}");
+                RemoveGlobal(key);
             }
             catch (Exception ex)
             {
@@ -321,38 +305,23 @@ internal static class ArchipelagoConnection
         }
     }
 
-    private static void SyncCompletedLocations()
-    {
-        // Version 0.2.5 kept completed research in world-global keys.  Ask AP
-        // for the connected slot's authoritative checked-location list instead.
-        // This restores only this player's completed research after upgrading,
-        // without copying another co-op player's global progress.
-        foreach (var entry in ValheimRandomizer.researchToArchipelago)
-        {
-            try
-            {
-                long locationId = session.Locations.GetLocationIdFromName("Valheim", entry.Value);
-                if (!session.Locations.AllLocationsChecked.Contains(locationId)) continue;
-
-                MarkLocationCompleted(entry.Key);
-            }
-            catch (Exception ex)
-            {
-                ValheimRandomizer.Log.LogWarning(
-                    $"AP location lookup failed while syncing '{entry.Value}': {ex.Message}");
-            }
-        }
-    }
-
-    private static void MarkLocationCompleted(string researchId)
-    {
-        ValheimRandomizer.SetResearchCrafted(researchId);
-        ValheimRandomizer.SetLocationSent(researchId);
-        ValheimRandomizer.RemovePendingLocation(researchId);
-    }
-
     private static bool WorldLoaded()
         => ZoneSystem.instance != null && Player.m_localPlayer != null; // simple & reliable
+
+    private static bool HasGlobal(string k)
+        => ZoneSystem.instance != null && ZoneSystem.instance.GetGlobalKey(k);
+
+    private static void SetGlobal(string k)
+    {
+        if (ZoneSystem.instance == null) return;
+        ZoneSystem.instance.SetGlobalKey(k);
+    }
+
+    private static void RemoveGlobal(string k)
+    {
+        if (ZoneSystem.instance == null) return;
+        ZoneSystem.instance.RemoveGlobalKey(k);
+    }
 
     public static void CompleteGame()
     {

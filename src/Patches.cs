@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -162,9 +162,7 @@ public static class Patches
 
         private static void Postfix(Player __instance, ref float __result)
         {
-            // Trophy research is now character-specific; never apply this
-            // client's tiers while Valheim is evaluating a remote player.
-            if (__instance != Player.m_localPlayer) return;
+            if (__instance == null || !__instance.IsPlayer()) return;
             int tiers = ValheimRandomizer.GetBoost(ValheimRandomizer.TrophyResearch.TrophyBoost.Load);
             if (tiers <= 0) return;
             __result += LoadPerTier * tiers;
@@ -199,9 +197,7 @@ public static class Patches
         // Postfix so we bump the already-accumulated totals
         static void Postfix(Player __instance, ref float hp, ref float stamina, ref float eitr)
         {
-            // Trophy research is stored per local character.  Do not calculate
-            // a remote player's food bonuses with this client's research.
-            if (__instance != Player.m_localPlayer) return;
+            if (__instance == null) return;
 
             // Read private m_foods via FieldRef
             var foodsList = FoodsRef(__instance);
