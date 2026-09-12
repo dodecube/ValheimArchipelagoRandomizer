@@ -6,7 +6,6 @@ using Archipelago.MultiClient.Net.Enums;
 using Archipelago.MultiClient.Net.Models;
 using Archipelago.MultiClient.Net.Helpers;
 using Archipelago.MultiClient.Net.MessageLog.Messages;
-using Archipelago.MultiClient.Net.Packets;
 
 
 internal static class ArchipelagoConnection
@@ -93,7 +92,16 @@ internal static class ArchipelagoConnection
 
             var sender = session.Players.GetPlayerAliasAndName(chatMessage.Player.Slot);
             if (string.IsNullOrWhiteSpace(sender)) sender = "Archipelago";
-            AddToGameChat(sender, chatMessage.Message);
+
+            // Another Valheim client tags its lines with the same prefix.
+            // Drop it so the text reads naturally in the game chat.
+            var text = chatMessage.Message ?? string.Empty;
+            if (text.StartsWith(ApChatPrefix, StringComparison.Ordinal))
+            {
+                text = text.Substring(ApChatPrefix.Length);
+            }
+
+            AddToGameChat(sender, text);
             return;
         }
 
@@ -195,7 +203,9 @@ internal static class ArchipelagoConnection
 
         try
         {
-            session.Socket.SendPacketAsync(new SayPacket { Text = ApChatPrefix + message });
+            // session.Say is the helper used by the client library for room
+            // chat; it is known to work against this server build.
+            session.Say(ApChatPrefix + message);
         }
         catch (Exception ex)
         {
